@@ -1,0 +1,21 @@
+# Flutter
+.dart_tool/
+.packages
+.pub/
+build/
+
+# Android
+.gradle/
+local.properties
+
+# IDE
+.idea/
+*.iml
+
+# Generated
+*.apk
+*.aab
+
+# OS
+Thumbs.db
+.DS_Store
