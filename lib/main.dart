@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'theme/cyberpunk_theme.dart';
+import 'theme/neumorphic_theme.dart';
 import 'pages/tracker_page.dart';
 import 'pages/discover_page.dart';
 import 'pages/statistics_page.dart';
@@ -11,9 +11,9 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
     statusBarColor: Colors.transparent,
-    statusBarIconBrightness: Brightness.light,
-    systemNavigationBarColor: Color(0xFF080E14),
-    systemNavigationBarIconBrightness: Brightness.light,
+    statusBarIconBrightness: Brightness.dark,
+    systemNavigationBarColor: NeumorphicColors.background,
+    systemNavigationBarIconBrightness: Brightness.dark,
   ));
   runApp(const SleepTrackerApp());
 }
@@ -26,15 +26,15 @@ class SleepTrackerApp extends StatelessWidget {
     return MaterialApp(
       title: 'Sleep Tracker',
       debugShowCheckedModeBanner: false,
-      theme: CyberpunkTheme.theme,
+      theme: NeumorphicTheme.theme,
       home: const MainShell(),
     );
   }
 }
 
+// ────────────────────────────────────────────────────────────────────────────
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
-
   @override
   State<MainShell> createState() => _MainShellState();
 }
@@ -42,68 +42,62 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
 
-  final List<Widget> _pages = const [
+  static const List<Widget> _pages = [
     TrackerPage(),
     DiscoverPage(),
     StatisticsPage(),
     ProfilePage(),
   ];
 
-  final List<_NavItem> _navItems = const [
+  static const List<_NavItem> _navItems = [
     _NavItem(
       icon: Icons.bedtime_outlined,
-      activeIcon: Icons.bedtime,
-      label: 'TRACKER',
-      activeColor: CyberpunkColors.neonCyan,
+      activeIcon: Icons.bedtime_rounded,
+      label: 'Tracker',
     ),
     _NavItem(
       icon: Icons.explore_outlined,
-      activeIcon: Icons.explore,
-      label: 'DISCOVER',
-      activeColor: CyberpunkColors.neonGreen,
+      activeIcon: Icons.explore_rounded,
+      label: 'Discover',
     ),
     _NavItem(
       icon: Icons.bar_chart_outlined,
-      activeIcon: Icons.bar_chart,
-      label: 'STATS',
-      activeColor: CyberpunkColors.neonPurple,
+      activeIcon: Icons.bar_chart_rounded,
+      label: 'Stats',
     ),
     _NavItem(
-      icon: Icons.person_outline,
-      activeIcon: Icons.person,
-      label: 'PROFILE',
-      activeColor: CyberpunkColors.neonYellow,
+      icon: Icons.person_outline_rounded,
+      activeIcon: Icons.person_rounded,
+      label: 'Profile',
     ),
   ];
 
-  void _onNavTap(int index) {
+  void _onTap(int i) {
     HapticFeedback.selectionClick();
-    setState(() => _currentIndex = index);
+    setState(() => _currentIndex = i);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: CyberpunkColors.background,
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _pages,
-      ),
-      bottomNavigationBar: _CyberpunkNavBar(
+      backgroundColor: NeumorphicColors.background,
+      body: IndexedStack(index: _currentIndex, children: _pages),
+      bottomNavigationBar: _NeumorphicNavBar(
         currentIndex: _currentIndex,
         items: _navItems,
-        onTap: _onNavTap,
+        onTap: _onTap,
       ),
     );
   }
 }
 
-class _CyberpunkNavBar extends StatelessWidget {
+// ────────────────────────────────────────────────────────────────────────────
+class _NeumorphicNavBar extends StatelessWidget {
   final int currentIndex;
   final List<_NavItem> items;
   final ValueChanged<int> onTap;
 
-  const _CyberpunkNavBar({
+  const _NeumorphicNavBar({
     required this.currentIndex,
     required this.items,
     required this.onTap,
@@ -113,92 +107,64 @@ class _CyberpunkNavBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: const Color(0xFF080E14),
-        border: const Border(
-          top: BorderSide(color: Color(0xFF1A3040), width: 1),
-        ),
-        boxShadow: [
+        color: NeumorphicColors.background,
+        boxShadow: const [
           BoxShadow(
-            color: items[currentIndex].activeColor.withOpacity(0.1),
-            blurRadius: 20,
-            offset: const Offset(0, -4),
+            color: NeumorphicColors.shadowDark,
+            offset: Offset(0, -4),
+            blurRadius: 16,
+          ),
+          BoxShadow(
+            color: NeumorphicColors.shadowLight,
+            offset: Offset(0, -1),
+            blurRadius: 4,
           ),
         ],
       ),
       child: SafeArea(
         top: false,
         child: SizedBox(
-          height: 64,
+          height: 68,
           child: Row(
             children: List.generate(items.length, (i) {
               final item = items[i];
-              final isActive = i == currentIndex;
+              final active = i == currentIndex;
               return Expanded(
                 child: GestureDetector(
                   onTap: () => onTap(i),
                   behavior: HitTestBehavior.opaque,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    curve: Curves.easeInOut,
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 200),
-                          child: Icon(
-                            isActive ? item.activeIcon : item.icon,
-                            key: ValueKey(isActive),
-                            color: isActive
-                                ? item.activeColor
-                                : CyberpunkColors.textSecondary,
-                            size: 22,
-                            shadows: isActive
-                                ? neonGlow(item.activeColor)
-                                    .map((s) => Shadow(
-                                          color: s.color,
-                                          blurRadius: s.blurRadius,
-                                        ))
-                                    .toList()
-                                : [],
-                          ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        padding: const EdgeInsets.all(8),
+                        decoration: active
+                            ? BoxDecoration(
+                                color: NeumorphicColors.coral.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(12),
+                              )
+                            : null,
+                        child: Icon(
+                          active ? item.activeIcon : item.icon,
+                          color: active
+                              ? NeumorphicColors.coral
+                              : NeumorphicColors.textSecondary,
+                          size: 22,
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          item.label,
-                          style: GoogleFonts.orbitron(
-                            fontSize: 8,
-                            color: isActive
-                                ? item.activeColor
-                                : CyberpunkColors.textSecondary,
-                            letterSpacing: 1,
-                            fontWeight: isActive
-                                ? FontWeight.w700
-                                : FontWeight.w400,
-                            shadows:
-                                isActive ? neonGlow(item.activeColor) : [],
-                          ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        item.label,
+                        style: GoogleFonts.montserrat(
+                          fontSize: 10,
+                          fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+                          color: active
+                              ? NeumorphicColors.coral
+                              : NeumorphicColors.textSecondary,
                         ),
-                        const SizedBox(height: 2),
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          height: 2,
-                          width: isActive ? 20 : 0,
-                          decoration: BoxDecoration(
-                            color: item.activeColor,
-                            borderRadius: BorderRadius.circular(1),
-                            boxShadow: isActive
-                                ? [
-                                    BoxShadow(
-                                      color:
-                                          item.activeColor.withOpacity(0.8),
-                                      blurRadius: 6,
-                                    ),
-                                  ]
-                                : [],
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               );
@@ -214,12 +180,9 @@ class _NavItem {
   final IconData icon;
   final IconData activeIcon;
   final String label;
-  final Color activeColor;
-
   const _NavItem({
     required this.icon,
     required this.activeIcon,
     required this.label,
-    required this.activeColor,
   });
 }
