@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import '../theme/dark_velvet.dart';
+import '../theme/app_colors.dart';
+import 'settings_page.dart';
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
-
   @override
   State<ProfilePage> createState() => _ProfilePageState();
 }
@@ -15,203 +15,148 @@ class _ProfilePageState extends State<ProfilePage> {
   bool _haptics      = true;
   double _targetSleep = 8.0;
 
-  // ── Build ─────────────────────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
-    return Theme(
-      // Self-contained dark theme override — only this page is dark
-      data: Theme.of(context).copyWith(
-        scaffoldBackgroundColor: DV.bg,
-        switchTheme: SwitchThemeData(
-          thumbColor: WidgetStateProperty.resolveWith((s) =>
-              s.contains(WidgetState.selected)
-                  ? DV.textPrimary
-                  : const Color(0xFFB0ABB5)),
-          trackColor: WidgetStateProperty.resolveWith((s) =>
-              s.contains(WidgetState.selected)
-                  ? DV.sapphire
-                  : const Color(0xFF2E2B38)),
-          trackOutlineColor:
-              WidgetStateProperty.all(Colors.transparent),
-        ),
-        sliderTheme: SliderThemeData(
-          activeTrackColor: DV.sapphire,
-          inactiveTrackColor: const Color(0xFF1A2D45),
-          thumbColor: DV.sapphire,
-          overlayColor: DV.amber.withValues(alpha: 0.18),
-          thumbShape: _AmberGlowThumbShape(),
-          trackHeight: 4,
-          tickMarkShape: SliderTickMarkShape.noTickMark,
-        ),
-      ),
-      child: Scaffold(
-        backgroundColor: DV.bg,
-        body: SafeArea(
-          child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
-            child: Column(
-              children: [
-                _buildHero(),
-                const SizedBox(height: 20),
-                _buildXpCard(),
-                const SizedBox(height: 16),
-                _buildSleepGoalCard(),
-                const SizedBox(height: 16),
-                _buildSystemCard(),
-                const SizedBox(height: 16),
-                _buildAccountCard(),
-                const SizedBox(height: 24),
-                Text(
-                  'Sleep Tracker v1.0.0  ·  NeuroCorp Systems',
-                  style: GoogleFonts.montserrat(
-                    fontSize: 10,
-                    color: DV.textDisabled,
-                    letterSpacing: 0.5,
-                  ),
+    final c = AppColors.of(context);
+    return Scaffold(
+      backgroundColor: c.background,
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              _buildHero(c),
+              const SizedBox(height: 24),
+              _buildXpCard(c),
+              const SizedBox(height: 24),
+              _buildSection('Sleep Goal', [_buildSleepSlider(c)], c),
+              _buildSection('Settings', [
+                _buildSwitchRow(
+                  icon: Icons.notifications_outlined,
+                  label: 'Sleep Reminders',
+                  subtitle: 'Notify 30 min before bedtime',
+                  value: _notifications,
+                  onChanged: (v) => setState(() => _notifications = v),
+                  c: c,
                 ),
-                const SizedBox(height: 28),
-              ],
-            ),
+                _buildDivider(c),
+                _buildSwitchRow(
+                  icon: Icons.alarm_on_outlined,
+                  label: 'Smart Alarm',
+                  subtitle: 'Wake during lightest sleep phase',
+                  value: _smartAlarm,
+                  onChanged: (v) => setState(() => _smartAlarm = v),
+                  c: c,
+                ),
+                _buildDivider(c),
+                _buildSwitchRow(
+                  icon: Icons.vibration_rounded,
+                  label: 'Haptic Feedback',
+                  subtitle: 'Vibrate on interactions',
+                  value: _haptics,
+                  onChanged: (v) => setState(() => _haptics = v),
+                  c: c,
+                ),
+              ], c),
+              _buildSection('Account', [
+                _buildNavRow(icon: Icons.person_outline_rounded, label: 'Edit Profile', c: c),
+                _buildDivider(c),
+                _buildNavRow(icon: Icons.share_outlined, label: 'Export Sleep Data', c: c),
+                _buildDivider(c),
+                _buildNavRow(icon: Icons.info_outline_rounded, label: 'About', c: c),
+                _buildDivider(c),
+                _buildNavRow(
+                    icon: Icons.logout_rounded,
+                    label: 'Sign Out',
+                    c: c,
+                    isDestructive: true),
+              ], c),
+              const SizedBox(height: 12),
+              Text('Sleep Tracker v1.0.0',
+                  style: GoogleFonts.montserrat(
+                      fontSize: 11, color: c.textDisabled)),
+              const SizedBox(height: 28),
+            ],
           ),
         ),
       ),
     );
   }
 
-  // ── Hero / Avatar ─────────────────────────────────────────────────────────
-  Widget _buildHero() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 28),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            const Color(0xFF161624),
-            DV.bg,
-          ],
-        ),
-      ),
+  // ── Hero ──────────────────────────────────────────────────────────────────
+  Widget _buildHero(AppColors c) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
       child: Column(
         children: [
-          // ── Page label row ──────────────────────────────────────────────
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'PROFILE',
-                style: GoogleFonts.montserrat(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: DV.textPrimary,
-                  letterSpacing: 3,
-                ),
-              ),
+              Text('Profile',
+                  style: GoogleFonts.montserrat(
+                      fontSize: 26,
+                      fontWeight: FontWeight.w800,
+                      color: c.textPrimary)),
               GestureDetector(
-                onTap: () {},
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                      builder: (_) => const SettingsPage()),
+                ),
                 child: Container(
-                  padding: const EdgeInsets.all(9),
-                  decoration: dvCard(radius: 12),
-                  child: Icon(
-                    Icons.settings_outlined,
-                    color: DV.textSecondary,
-                    size: 18,
-                  ),
+                  padding: const EdgeInsets.all(10),
+                  decoration: c.cardRaised(radius: 14),
+                  child: Icon(Icons.settings_outlined,
+                      color: c.textSecondary, size: 20),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 28),
-
-          // ── Avatar ──────────────────────────────────────────────────────
           Stack(
             alignment: Alignment.bottomRight,
             children: [
-              // Outer sapphire glow ring
               Container(
-                width: 108,
-                height: 108,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  boxShadow: sapphireGlow(intensity: 0.28),
-                ),
-                child: Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: DV.sapphire, width: 2),
-                    // Subtle inner sapphire gradient
-                    gradient: RadialGradient(
-                      colors: [
-                        DV.sapphireDim.withValues(alpha: 0.5),
-                        DV.surface,
-                      ],
-                      stops: const [0.0, 1.0],
-                    ),
-                  ),
-                  child: Center(
-                    child: Icon(
-                      Icons.person_rounded,
-                      size: 58,
-                      color: DV.sapphireLight.withValues(alpha: 0.9),
-                    ),
-                  ),
-                ),
+                width: 100, height: 100,
+                decoration: c.avatarDecoration(),
+                child: Icon(Icons.person_rounded,
+                    size: 54,
+                    color: c.isDark
+                        ? c.textPrimary.withValues(alpha: 0.95)
+                        : const Color(0xFFFFFFFF)),
               ),
-              // Edit badge
               Container(
                 padding: const EdgeInsets.all(5),
                 decoration: BoxDecoration(
-                  color: DV.surfaceHi,
+                  color: c.isDark ? c.cardBg : c.white,
                   shape: BoxShape.circle,
-                  border: Border.all(color: DV.border, width: 1),
+                  border: Border.all(color: c.accent.withValues(alpha: 0.4), width: 1),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.4),
-                      blurRadius: 6,
-                    ),
+                        color: c.shadowDark.withValues(alpha: 0.5),
+                        blurRadius: 6),
                   ],
                 ),
-                child: Icon(
-                  Icons.edit_rounded,
-                  size: 12,
-                  color: DV.sapphireLight,
-                ),
+                child: Icon(Icons.edit_rounded, size: 13, color: c.accent),
               ),
             ],
           ),
           const SizedBox(height: 16),
-
-          // ── Name ────────────────────────────────────────────────────────
-          Text(
-            'CYBER_SLEEPER_01',
-            style: GoogleFonts.montserrat(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: DV.textPrimary,
-              letterSpacing: 0.5,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            'Neural Optimization Level: 7',
-            style: GoogleFonts.montserrat(
-              fontSize: 13,
-              color: DV.textSecondary,
-              fontWeight: FontWeight.w400,
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // ── Tags (velvet eggplant) ───────────────────────────────────────
+          Text('CYBER_SLEEPER_01',
+              style: GoogleFonts.montserrat(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w800,
+                  color: c.textPrimary)),
+          const SizedBox(height: 4),
+          Text('Neural Optimization Level: 7',
+              style: GoogleFonts.montserrat(
+                  fontSize: 13, color: c.textSecondary)),
+          const SizedBox(height: 14),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: 8, runSpacing: 8,
             alignment: WrapAlignment.center,
             children: [
-              _tag('NIGHT OWL'),
-              _tag('7-DAY STREAK'),
-              _tag('DEEP DIVER'),
+              _badge('NIGHT OWL', c),
+              _badge('7-DAY STREAK', c),
+              _badge('DEEP DIVER', c),
             ],
           ),
         ],
@@ -219,31 +164,26 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Widget _tag(String label) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 6),
-        decoration: BoxDecoration(
-          color: DV.tagBg,
-          borderRadius: BorderRadius.circular(30),
-          border: Border.all(color: DV.tagBorder, width: 1),
-        ),
-        child: Text(
-          label,
+  Widget _badge(String label, AppColors c) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: c.tagDecoration(radius: 30),
+      child: Text(label,
           style: GoogleFonts.montserrat(
-            fontSize: 10,
-            fontWeight: FontWeight.w700,
-            color: DV.textPrimary,
-            letterSpacing: 1,
-          ),
-        ),
-      );
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: c.tagText,
+              letterSpacing: 0.5)),
+    );
+  }
 
-  // ── XP Card ───────────────────────────────────────────────────────────────
-  Widget _buildXpCard() {
+  // ── XP card ───────────────────────────────────────────────────────────────
+  Widget _buildXpCard(AppColors c) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 24),
       child: Container(
         padding: const EdgeInsets.all(20),
-        decoration: dvCard(radius: 18, elevated: false),
+        decoration: c.cardRaised(radius: 20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -254,206 +194,158 @@ class _ProfilePageState extends State<ProfilePage> {
                   children: [
                     Container(
                       padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: DV.sapphireDim,
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.bolt_rounded,
-                          color: DV.sapphireLight, size: 18),
+                      decoration: c.iconBadge(radius: 10),
+                      child: Icon(Icons.bolt_rounded, color: c.accent, size: 18),
                     ),
                     const SizedBox(width: 12),
-                    Text(
-                      'SLEEP XP',
-                      style: GoogleFonts.montserrat(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: DV.textPrimary,
-                      ),
-                    ),
+                    Text('Sleep XP',
+                        style: GoogleFonts.montserrat(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            color: c.textPrimary)),
                   ],
                 ),
-                Text(
-                  '2,450 / 3,000',
-                  style: GoogleFonts.montserrat(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: DV.sapphireLight,
-                  ),
-                ),
+                Text('2,450 / 3,000',
+                    style: GoogleFonts.montserrat(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: c.accent)),
               ],
             ),
-            const SizedBox(height: 16),
-
+            const SizedBox(height: 14),
             // Progress track
             Container(
-              height: 8,
+              height: 10,
               decoration: BoxDecoration(
-                color: DV.xpTrack,
-                borderRadius: BorderRadius.circular(8),
+                color: c.progressBg,
+                borderRadius: BorderRadius.circular(10),
+                boxShadow: [
+                  BoxShadow(
+                      color: c.shadowDark.withValues(alpha: 0.5),
+                      offset: const Offset(2, 2),
+                      blurRadius: 4),
+                  BoxShadow(
+                      color: c.shadowLight.withValues(alpha: c.isDark ? 0.04 : 1.0),
+                      offset: const Offset(-2, -2),
+                      blurRadius: 4),
+                ],
               ),
-              child: FractionallySizedBox(
-                alignment: Alignment.centerLeft,
-                widthFactor: 0.82,
-                child: Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(8),
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFF1A556A), Color(0xFF28899E)],
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: FractionallySizedBox(
+                  alignment: Alignment.centerLeft,
+                  widthFactor: 0.82,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(colors: c.progressGradient),
+                      borderRadius: BorderRadius.circular(10),
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: DV.xpFill.withValues(alpha: 0.45),
-                        blurRadius: 8,
-                        spreadRadius: 1,
-                      ),
-                    ],
                   ),
                 ),
               ),
             ),
             const SizedBox(height: 10),
-            Text(
-              '550 XP to next level',
-              style: GoogleFonts.montserrat(
-                fontSize: 12,
-                color: DV.textDisabled,
-              ),
-            ),
+            Text('550 XP to next level',
+                style: GoogleFonts.montserrat(
+                    fontSize: 12, color: c.textSecondary)),
           ],
         ),
       ),
     );
   }
 
-  // ── Sleep Goal Card ───────────────────────────────────────────────────────
-  Widget _buildSleepGoalCard() {
+  // ── Section wrapper ────────────────────────────────────────────────────────
+  Widget _buildSection(String title, List<Widget> children, AppColors c) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(20, 20, 20, 16),
-        decoration: dvCard(radius: 18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _sectionLabel('SLEEP GOAL'),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: DV.sapphireDim,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: const Icon(Icons.bedtime_rounded,
-                      color: DV.sapphireLight, size: 20),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Text(
-                    'Target Duration',
-                    style: GoogleFonts.montserrat(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: DV.textPrimary,
-                    ),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: DV.sapphireDim,
-                    borderRadius: BorderRadius.circular(30),
-                    border: Border.all(color: DV.sapphire.withValues(alpha: 0.5)),
-                  ),
-                  child: Text(
-                    '${_targetSleep.toStringAsFixed(1)}h',
-                    style: GoogleFonts.montserrat(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: DV.textPrimary,
-                    ),
-                  ),
-                ),
-              ],
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title,
+              style: GoogleFonts.montserrat(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w700,
+                  color: c.textPrimary)),
+          const SizedBox(height: 12),
+          Container(
+            decoration: c.cardRaised(radius: 20),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Column(children: children),
             ),
-            const SizedBox(height: 14),
-            Slider(
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Sleep slider ──────────────────────────────────────────────────────────
+  Widget _buildSleepSlider(AppColors c) {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(children: [
+                Icon(Icons.bedtime_outlined, color: c.accent, size: 20),
+                const SizedBox(width: 10),
+                Text('Target Duration',
+                    style: GoogleFonts.montserrat(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: c.textPrimary)),
+              ]),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: c.accentButton(radius: 30),
+                child: Text('${_targetSleep.toStringAsFixed(1)}h',
+                    style: GoogleFonts.montserrat(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: c.white)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          SliderTheme(
+            data: SliderTheme.of(context).copyWith(
+              thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 9),
+              overlayShape: const RoundSliderOverlayShape(overlayRadius: 18),
+              // Dark velvet: add amber glow to thumb via overlay color
+              overlayColor: c.isDark
+                  ? const Color(0xFFD4A84B).withValues(alpha: 0.20)
+                  : c.accent.withValues(alpha: 0.15),
+            ),
+            child: Slider(
               value: _targetSleep,
-              min: 4,
-              max: 12,
-              divisions: 16,
+              min: 4, max: 12, divisions: 16,
               onChanged: (v) => setState(() => _targetSleep = v),
             ),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: ['4h', '8h', '12h']
-                    .map((l) => Text(l,
-                        style: GoogleFonts.montserrat(
-                          fontSize: 11,
-                          color: DV.textSecondary,
-                        )))
-                    .toList(),
-              ),
-            ),
-          ],
-        ),
+          ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('4h', style: GoogleFonts.montserrat(fontSize: 11, color: c.textDisabled)),
+              Text('8h (optimal)', style: GoogleFonts.montserrat(fontSize: 11, color: c.textDisabled)),
+              Text('12h', style: GoogleFonts.montserrat(fontSize: 11, color: c.textDisabled)),
+            ],
+          ),
+        ],
       ),
     );
   }
 
-  // ── System Card ───────────────────────────────────────────────────────────
-  Widget _buildSystemCard() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Container(
-        decoration: dvCard(radius: 18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 4),
-              child: _sectionLabel('SYSTEM'),
-            ),
-            _switchRow(
-              icon: Icons.notifications_outlined,
-              label: 'Sleep Reminders',
-              subtitle: 'Notify 30 min before bedtime',
-              value: _notifications,
-              onChanged: (v) => setState(() => _notifications = v),
-            ),
-            _dvDivider(),
-            _switchRow(
-              icon: Icons.alarm_on_outlined,
-              label: 'Smart Alarm',
-              subtitle: 'Wake during lightest sleep phase',
-              value: _smartAlarm,
-              onChanged: (v) => setState(() => _smartAlarm = v),
-            ),
-            _dvDivider(),
-            _switchRow(
-              icon: Icons.vibration_rounded,
-              label: 'Haptic Feedback',
-              subtitle: 'Vibrate on interactions',
-              value: _haptics,
-              onChanged: (v) => setState(() => _haptics = v),
-            ),
-            const SizedBox(height: 4),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _switchRow({
+  // ── Switch row ────────────────────────────────────────────────────────────
+  Widget _buildSwitchRow({
     required IconData icon,
     required String label,
     required String subtitle,
     required bool value,
     required ValueChanged<bool> onChanged,
+    required AppColors c,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
@@ -461,11 +353,8 @@ class _ProfilePageState extends State<ProfilePage> {
         children: [
           Container(
             padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: DV.sapphireDim,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: DV.sapphireLight, size: 20),
+            decoration: c.iconBadge(radius: 10),
+            child: Icon(icon, color: c.accent, size: 20),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -474,15 +363,12 @@ class _ProfilePageState extends State<ProfilePage> {
               children: [
                 Text(label,
                     style: GoogleFonts.montserrat(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: DV.textPrimary,
-                    )),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: c.textPrimary)),
                 Text(subtitle,
                     style: GoogleFonts.montserrat(
-                      fontSize: 12,
-                      color: DV.textSecondary,
-                    )),
+                        fontSize: 12, color: c.textSecondary)),
               ],
             ),
           ),
@@ -492,43 +378,14 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // ── Account Card ──────────────────────────────────────────────────────────
-  Widget _buildAccountCard() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Container(
-        decoration: dvCard(radius: 18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 4),
-              child: _sectionLabel('ACCOUNT'),
-            ),
-            _navRow(icon: Icons.person_outline_rounded, label: 'Edit Profile'),
-            _dvDivider(),
-            _navRow(icon: Icons.share_outlined, label: 'Export Sleep Data'),
-            _dvDivider(),
-            _navRow(icon: Icons.info_outline_rounded, label: 'About'),
-            _dvDivider(),
-            _navRow(
-              icon: Icons.logout_rounded,
-              label: 'Sign Out',
-              isDestructive: true,
-            ),
-            const SizedBox(height: 4),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _navRow({
+  // ── Nav row ───────────────────────────────────────────────────────────────
+  Widget _buildNavRow({
     required IconData icon,
     required String label,
+    required AppColors c,
     bool isDestructive = false,
   }) {
-    final color = isDestructive ? const Color(0xFFB05555) : DV.sapphireLight;
+    final color = isDestructive ? const Color(0xFFE57373) : c.accent;
     return GestureDetector(
       onTap: () {},
       child: Padding(
@@ -538,99 +395,29 @@ class _ProfilePageState extends State<ProfilePage> {
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: isDestructive
-                    ? const Color(0xFF3A1A1A)
-                    : DV.sapphireDim,
+                color: color.withValues(alpha: 0.10),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Icon(icon, color: color, size: 20),
             ),
             const SizedBox(width: 14),
             Expanded(
-              child: Text(
-                label,
-                style: GoogleFonts.montserrat(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: isDestructive ? const Color(0xFFB05555) : DV.textPrimary,
-                ),
-              ),
+              child: Text(label,
+                  style: GoogleFonts.montserrat(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: isDestructive ? const Color(0xFFE57373) : c.textPrimary)),
             ),
             Icon(Icons.arrow_forward_ios_rounded,
-                size: 13, color: DV.textDisabled),
+                size: 14, color: c.textDisabled),
           ],
         ),
       ),
     );
   }
 
-  // ── Shared helpers ────────────────────────────────────────────────────────
-  Widget _sectionLabel(String text) => Text(
-        text,
-        style: GoogleFonts.montserrat(
-          fontSize: 10,
-          fontWeight: FontWeight.w700,
-          color: DV.sapphireLight,
-          letterSpacing: 2.5,
-        ),
-      );
-
-  Widget _dvDivider() => Padding(
+  Widget _buildDivider(AppColors c) => Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Divider(
-          color: DV.border,
-          thickness: 1,
-          height: 1,
-        ),
+        child: Divider(color: c.divider, thickness: 1, height: 1),
       );
-}
-
-// ─── Custom amber-glow thumb ─────────────────────────────────────────────────
-class _AmberGlowThumbShape extends SliderComponentShape {
-  static const double _radius = 9;
-
-  @override
-  Size getPreferredSize(bool isEnabled, bool isDiscrete) =>
-      const Size.fromRadius(_radius + 4);
-
-  @override
-  void paint(
-    PaintingContext context,
-    Offset center, {
-    required Animation<double> activationAnimation,
-    required Animation<double> enableAnimation,
-    required bool isDiscrete,
-    required TextPainter labelPainter,
-    required RenderBox parentBox,
-    required SliderThemeData sliderTheme,
-    required TextDirection textDirection,
-    required double value,
-    required double textScaleFactor,
-    required Size sizeWithOverflow,
-  }) {
-    final canvas = context.canvas;
-
-    // Amber glow layer
-    canvas.drawCircle(
-      center,
-      _radius + 5,
-      Paint()
-        ..color = DV.amber.withValues(alpha: 0.25)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6),
-    );
-
-    // Sapphire fill
-    canvas.drawCircle(
-      center,
-      _radius,
-      Paint()..color = DV.sapphire,
-    );
-
-    // Cream centre highlight
-    canvas.drawCircle(
-      center,
-      _radius * 0.42,
-      Paint()..color = DV.textPrimary.withValues(alpha: 0.9),
-    );
-  }
 }
