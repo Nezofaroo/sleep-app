@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:path_provider/path_provider.dart';
+// Добавляем импорт для разрешений
+import 'package:permission_handler/permission_handler.dart';
+
 import 'theme/neumorphic_theme.dart';
 import 'theme/dark_velvet_theme.dart';
 import 'theme/theme_notifier.dart';
@@ -16,11 +19,21 @@ import 'services/background_service_init.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // --- БЛОК ЗАПРОСА РАЗРЕШЕНИЙ ---
+  // Запрашиваем разрешения перед инициализацией сервиса.
+  // Это предотвратит вылет на Android 13/14+.
+  await [
+    Permission.microphone,
+    Permission.notification,
+  ].request();
+  // -------------------------------
+
   // Initialise Hive for the UI isolate.
   final docsDir = await getApplicationDocumentsDirectory();
   await initSoundEventHive(docsDir.path);
 
   // Register background service handlers (must be called before runApp).
+  // Теперь вызывается только после того, как разрешения получены или запрошены.
   await configureBackgroundService();
 
   runApp(const SleepTrackerApp());
@@ -38,11 +51,11 @@ class SleepTrackerApp extends StatelessWidget {
         SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
           statusBarIconBrightness:
-              isDark ? Brightness.light : Brightness.dark,
+          isDark ? Brightness.light : Brightness.dark,
           systemNavigationBarColor:
-              isDark ? const Color(0xFF12121A) : NeumorphicColors.background,
+          isDark ? const Color(0xFF12121A) : NeumorphicColors.background,
           systemNavigationBarIconBrightness:
-              isDark ? Brightness.light : Brightness.dark,
+          isDark ? Brightness.light : Brightness.dark,
         ));
         return MaterialApp(
           title: 'Sleep Tracker',
@@ -57,6 +70,7 @@ class SleepTrackerApp extends StatelessWidget {
   }
 }
 
+// Остальной код MainShell, _NavBar и т.д. остается без изменений
 // ── Main shell with bottom nav ────────────────────────────────────────────────
 class MainShell extends StatefulWidget {
   const MainShell({super.key});
@@ -144,9 +158,9 @@ class _NavBar extends StatelessWidget {
                         padding: const EdgeInsets.all(8),
                         decoration: active
                             ? BoxDecoration(
-                                color: c.navActive.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(12),
-                              )
+                          color: c.navActive.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12),
+                        )
                             : null,
                         child: Icon(
                           active ? item.activeIcon : item.icon,
@@ -159,7 +173,7 @@ class _NavBar extends StatelessWidget {
                           style: GoogleFonts.montserrat(
                             fontSize: 10,
                             fontWeight:
-                                active ? FontWeight.w700 : FontWeight.w500,
+                            active ? FontWeight.w700 : FontWeight.w500,
                             color: iconColor,
                           )),
                     ],

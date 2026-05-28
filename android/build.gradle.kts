@@ -1,3 +1,15 @@
+
+// ДОБАВЛЕНО: Блок buildscript для поддержки Java 8+ (desugaring)
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.android.tools:desugar_jdk_libs:2.1.4")
+    }
+}
+
 allprojects {
     repositories {
         google()

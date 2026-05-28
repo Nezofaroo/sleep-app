@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../models/sound_event.dart';
 import '../providers/sleep_audio_provider.dart';
 import '../widgets/glassmorphism_card.dart';
@@ -186,7 +187,40 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
       child: GestureDetector(
-        onTap: isActive ? _p.stopMonitoring : _p.startMonitoring,
+        onTap: () async {
+          if (isActive) {
+            // Если уже работает — просто останавливаем
+            _p.stopMonitoring();
+          } else {
+            // --- ДОБАВЛЕННЫЙ БЛОК ПРОВЕРКИ ---
+            // 1. Запрашиваем микрофон и уведомления через permission_handler
+            // Импорт пакета должен быть в начале файла:
+            // import 'package:permission_handler/permission_handler.dart';
+
+            Map<Permission, PermissionStatus> statuses = await [
+              Permission.microphone,
+              Permission.notification,
+            ].request();
+
+            if (statuses[Permission.microphone]!.isGranted &&
+                statuses[Permission.notification]!.isGranted) {
+
+              // 2. Если разрешения даны, запускаем мониторинг
+              _p.startMonitoring();
+
+            } else {
+              // 3. Если пользователь отказал, показываем подсказку
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Для работы трекера нужны разрешения на микрофон и уведомления'),
+                    backgroundColor: _C.danger,
+                  ),
+                );
+              }
+            }
+          }
+        },
         child: Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(vertical: 16),

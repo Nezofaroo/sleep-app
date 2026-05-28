@@ -1,68 +1,104 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter_background_service_android/flutter_background_service_android.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/sound_event.dart';
 import 'sleep_audio_trigger_service.dart';
 
 // ── Background isolate entry-point ────────────────────────────────────────────
-// IMPORTANT: These must be top-level functions annotated with
-// @pragma('vm:entry-point') so the AOT compiler doesn't tree-shake them.
-
 @pragma('vm:entry-point')
 Future<void> onBackgroundServiceStart(ServiceInstance service) async {
-  // Ensure Flutter bindings are available in the background isolate.
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialise Hive in this isolate (separate from the UI isolate).
+  // 1. СРАЗУ закрепляем статус Foreground
+  if (service is AndroidServiceInstance) {
+    // Устанавливаем обработчики переключения
+    service.on('setAsForeground').listen((event) => service.setAsForegroundService());
+    service.on('setAsBackground').listen((event) => service.setAsBackgroundService());
+
+    // ПРИНУДИТЕЛЬНО активируем режим перед любой работой с аудио
+    service.setAsForegroundService();
+  }
+
+  // 2. КРИТИЧЕСКАЯ ЗАДЕРЖКА (1.5 - 2 секунды)
+  // Даем Android 14 время "увидеть" Foreground статус и разрешить микрофон в фоне
+  await Future.delayed(const Duration(milliseconds: 1500));
+
   final docsDir = await getApplicationDocumentsDirectory();
   await initSoundEventHive(docsDir.path);
 
-  // Build and initialise the VAD service.
   final vad = SleepAudioTriggerService(service);
-  final ready = await vad.initialize();
-  if (!ready) {
+
+  try {
+    // 3. Пытаемся инициализироваться
+    final ready = await vad.initialize();
+
+    if (!ready) {
+      // Если вернулось false (занято), пробуем еще раз через секунду
+      await Future.delayed(const Duration(seconds: 1));
+      final retryReady = await vad.initialize();
+      if (!retryReady) {
+        service.invoke('error', {'message': 'Микрофон занят другим приложением'});
+        service.stopSelf();
+        return;
+      }
+    }
+
+    await vad.startMonitoring();
+    service.invoke('statusChanged', {'status': 'monitoring'});
+    print("Background Service: Мониторинг успешно запущен");
+
+  } catch (e) {
+    service.invoke('error', {'message': 'Ошибка сервиса: $e'});
     service.stopSelf();
     return;
   }
 
-  // Start monitoring immediately.
-  await vad.startMonitoring();
-
-  // Listen for stop commands from the UI isolate.
   service.on('stopMonitoring').listen((_) async {
     await vad.stopAll();
     service.stopSelf();
   });
 
-  // Keep the service alive with a heartbeat (required on some Android OEMs).
   service.on('ping').listen((_) => service.invoke('pong', {}));
 }
 
 @pragma('vm:entry-point')
 Future<bool> onIosBackground(ServiceInstance service) async {
   WidgetsFlutterBinding.ensureInitialized();
-  return true; // Keep service alive in iOS background
+  return true;
 }
 
-// ── One-time configuration (call from main()) ─────────────────────────────────
+// ── One-time configuration ───────────────────────────────────────────────────
 Future<void> configureBackgroundService() async {
   final svc = FlutterBackgroundService();
 
+  const AndroidNotificationChannel channel = AndroidNotificationChannel(
+    'sleep_tracker_audio',
+    'Sleep Tracker Service',
+    description: 'This channel is used for recording sleep sounds.',
+    importance: Importance.low,
+  );
+
+  final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
+  FlutterLocalNotificationsPlugin();
+
+  await flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<
+      AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(channel);
+
   await svc.configure(
-    // ── Android: runs as a Foreground Service with mic access ────────────────
     androidConfiguration: AndroidConfiguration(
       onStart: onBackgroundServiceStart,
       autoStart: false,
       isForegroundMode: true,
-      // Channel and notification ID for the persistent notification.
       notificationChannelId: 'sleep_tracker_audio',
-      initialNotificationTitle: 'Sleep Tracker',
-      initialNotificationContent: 'Listening for sleep sounds…',
+      initialNotificationTitle: 'Трекер сна',
+      initialNotificationContent: 'Готов к работе...',
       foregroundServiceNotificationId: 2001,
-      // Required on Android 14+ to access mic in foreground service.
       foregroundServiceTypes: const [AndroidForegroundType.microphone],
     ),
-    // ── iOS: uses background audio session ───────────────────────────────────
     iosConfiguration: IosConfiguration(
       autoStart: false,
       onForeground: onBackgroundServiceStart,
@@ -73,7 +109,13 @@ Future<void> configureBackgroundService() async {
 
 // ── Convenience helpers ───────────────────────────────────────────────────────
 Future<void> startSnoreDetectionService() async {
-  await FlutterBackgroundService().startService();
+  final service = FlutterBackgroundService();
+  // Если сервис уже запущен, сначала пробуем его остановить, чтобы освободить микрофон
+  if (await service.isRunning()) {
+    service.invoke('stopMonitoring');
+    await Future.delayed(const Duration(milliseconds: 500));
+  }
+  await service.startService();
 }
 
 Future<void> stopSnoreDetectionService() async {

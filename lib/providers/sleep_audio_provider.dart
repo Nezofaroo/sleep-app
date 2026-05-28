@@ -2,19 +2,13 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:hive/hive.dart';
+import 'package:permission_handler/permission_handler.dart'; // Добавлено
 import '../models/sound_event.dart';
 import '../services/background_service_init.dart';
 
 /// Possible states shown in the UI.
 enum MonitoringStatus { idle, monitoring, recording, error }
 
-/// ChangeNotifier that bridges the background service ↔ UI.
-///
-/// The provider:
-/// 1. Loads existing events from Hive on creation.
-/// 2. Starts/stops the background service.
-/// 3. Listens to [FlutterBackgroundService] events and updates state.
-/// 4. Exposes sorted [events] list for the timeline widget.
 class SleepAudioProvider extends ChangeNotifier {
   // ── State ─────────────────────────────────────────────────────────────────
   MonitoringStatus _status    = MonitoringStatus.idle;
@@ -26,7 +20,7 @@ class SleepAudioProvider extends ChangeNotifier {
   List<SoundEvent> get events   => List.unmodifiable(_events);
   bool get isActive =>
       _status == MonitoringStatus.monitoring ||
-      _status == MonitoringStatus.recording;
+          _status == MonitoringStatus.recording;
 
   // ── Background service subscriptions ─────────────────────────────────────
   StreamSubscription? _statusSub;
@@ -38,7 +32,6 @@ class SleepAudioProvider extends ChangeNotifier {
     _listenToService();
   }
 
-  // ── Hive ──────────────────────────────────────────────────────────────────
   void _loadFromHive() {
     try {
       if (Hive.isBoxOpen(kSoundEventBoxName)) {
@@ -52,7 +45,6 @@ class SleepAudioProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
-  // ── Background service event listeners ────────────────────────────────────
   void _listenToService() {
     final svc = FlutterBackgroundService();
 
@@ -69,18 +61,16 @@ class SleepAudioProvider extends ChangeNotifier {
 
     _eventSub = svc.on('newEvent').listen((data) {
       if (data == null) return;
-      // Reconstruct event from IPC map (Hive object from background isolate
-      // is not directly accessible in the UI isolate).
       final event = SoundEvent(
         id:              data['id']              as String,
         filePath:        data['filePath']        as String,
         startTime:       DateTime.fromMillisecondsSinceEpoch(
-                           data['startTime']     as int),
+            data['startTime']     as int),
         durationSeconds: data['durationSeconds'] as int,
         typeIndex:       data['typeIndex']       as int,
         peakAmplitude:   (data['peakAmplitude']  as num).toDouble(),
       );
-      _events.insert(0, event); // prepend so newest is first
+      _events.insert(0, event);
       notifyListeners();
     });
 
@@ -93,13 +83,27 @@ class SleepAudioProvider extends ChangeNotifier {
 
   // ── Public controls ───────────────────────────────────────────────────────
 
-  /// Start background monitoring. Requests permissions lazily (the service
-  /// itself calls [AudioRecorder.hasPermission] and reports via 'error').
+  /// ИСПРАВЛЕНО: Теперь запрашивает разрешения ПЕРЕД запуском сервиса.
   Future<void> startMonitoring() async {
     _errorMsg = null;
-    _status   = MonitoringStatus.monitoring;
-    notifyListeners();
-    await startSnoreDetectionService();
+
+    // 1. Сначала запрашиваем разрешения в UI-потоке
+    final micStatus = await Permission.microphone.request();
+    final notifyStatus = await Permission.notification.request();
+
+    if (micStatus.isGranted && notifyStatus.isGranted) {
+      _status = MonitoringStatus.monitoring;
+      notifyListeners();
+
+      // Даем небольшую паузу, чтобы системные диалоги закрылись
+      await Future.delayed(const Duration(milliseconds: 300));
+
+      await startSnoreDetectionService();
+    } else {
+      _errorMsg = "Необходимы разрешения на микрофон и уведомления";
+      _status = MonitoringStatus.error;
+      notifyListeners();
+    }
   }
 
   Future<void> stopMonitoring() async {
@@ -108,11 +112,9 @@ class SleepAudioProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Remove an event from the in-memory list and delete its file.
   Future<void> deleteEvent(SoundEvent event) async {
     _events.remove(event);
     notifyListeners();
-    // Hive deletion must happen in the UI isolate's own box.
     try {
       if (Hive.isBoxOpen(kSoundEventBoxName)) {
         await Hive.box<SoundEvent>(kSoundEventBoxName).delete(event.id);
@@ -120,7 +122,6 @@ class SleepAudioProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
-  /// Clear all events for the current session.
   void clearEvents() {
     _events.clear();
     notifyListeners();

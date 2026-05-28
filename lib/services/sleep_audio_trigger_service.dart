@@ -9,26 +9,16 @@ import 'audio_cache_manager.dart';
 // ── VAD state machine ─────────────────────────────────────────────────────────
 enum _VADState { idle, monitoring, recording, cooldown }
 
-/// Core Voice Activity Detection service.
-///
-/// Architectural decisions:
-/// • Uses `record` package's [AudioRecorder] for both amplitude polling
-///   (via startStream → onAmplitudeChanged) and file recording.
-/// • Two-phase approach: phase-1 = stream-only for detection,
-///   phase-2 = file recording when threshold exceeded.
-///   This avoids storing 8 h of continuous audio.
-/// • Runs entirely inside the background service isolate so the OS
-///   cannot kill it when the screen is locked.
-/// • Communicates events to the UI isolate via [ServiceInstance.invoke].
 class SleepAudioTriggerService {
   // ── Constants ────────────────────────────────────────────────────────────
-  static const double kThresholdDb   = -35.0; // dBFS; tune per device
+  static const double kThresholdDb   = -35.0;
   static const Duration kPollInterval = Duration(milliseconds: 250);
   static const Duration kCooldown     = Duration(milliseconds: 1500);
   static const Duration kMinDuration  = Duration(seconds: 1);
 
   // ── Dependencies ─────────────────────────────────────────────────────────
   final ServiceInstance _service;
+  // Инициализируем рекордер один раз
   final AudioRecorder   _recorder = AudioRecorder();
   final _uuid = const Uuid();
 
@@ -43,15 +33,25 @@ class SleepAudioTriggerService {
 
   // ── Public API ────────────────────────────────────────────────────────────
 
-  /// Initialise: purge old cache files, verify permissions.
+  /// ИСПРАВЛЕНО: Убрана проверка разрешений внутри фонового изолята.
   Future<bool> initialize() async {
-    await AudioCacheManager.purgeOldFiles();
-    final hasPermission = await _recorder.hasPermission();
-    if (!hasPermission) {
-      _service.invoke('error', {'message': 'Microphone permission denied'});
+    try {
+      await AudioCacheManager.purgeOldFiles();
+
+      // На всякий случай сбрасываем состояние рекордера, если он завис
+      if (await _recorder.isRecording()) {
+        await _recorder.stop();
+      }
+
+      // ВАЖНО: Мы НЕ вызываем _recorder.hasPermission() здесь.
+      // На Android 14+ в фоне это ВСЕГДА вернет false или вызовет ошибку безопасности.
+      // Мы полагаемся на то, что права получены в главном окне приложения.
+
+      return true;
+    } catch (e) {
+      _service.invoke('error', {'message': 'Ошибка инициализации аудио: $e'});
       return false;
     }
-    return true;
   }
 
   /// Start the detection loop (transitions idle → monitoring).
@@ -66,9 +66,11 @@ class SleepAudioTriggerService {
     _cooldownTimer = null;
     await _ampSub?.cancel();
     _ampSub = null;
-    if (await _recorder.isRecording()) {
-      await _recorder.stop(); // discard any in-progress recording
-    }
+    try {
+      if (await _recorder.isRecording()) {
+        await _recorder.stop();
+      }
+    } catch (_) {}
     _state = _VADState.idle;
     _service.invoke('statusChanged', {'status': 'idle'});
   }
@@ -80,79 +82,73 @@ class SleepAudioTriggerService {
     _service.invoke('statusChanged', {'status': 'monitoring'});
 
     try {
-      // Start recording to a stream (audio bytes discarded — we only need amplitude).
+      // Если стрим уже идет, закрываем его перед новым запуском
+      await _ampSub?.cancel();
+
       await _recorder.startStream(const RecordConfig(
         encoder: AudioEncoder.pcm16bits,
         sampleRate: 16000,
         numChannels: 1,
       ));
 
-      // Subscribe to amplitude events at our poll interval.
       _ampSub = _recorder
           .onAmplitudeChanged(kPollInterval)
           .listen(_onAmplitude, onError: _onAmpError);
     } catch (e) {
-      _service.invoke('error', {'message': 'Failed to start mic stream: $e'});
+      // Если здесь ошибка "permission denied", значит система всё равно блокирует микрофон
+      _service.invoke('error', {'message': 'Не удалось захватить микрофон: $e'});
+      _state = _VADState.idle;
     }
   }
 
-  // ── Amplitude handler (state machine core) ────────────────────────────────
+  // Остальной код (onAmplitude, _transitionToRecording, _finishRecording и т.д.)
+  // остается без изменений, так как логика VAD верна.
 
   void _onAmplitude(Amplitude amp) {
     final db = amp.current;
-
     switch (_state) {
       case _VADState.monitoring:
         if (db > kThresholdDb) {
           _transitionToRecording();
         }
         break;
-
       case _VADState.recording:
         if (db > _peakAmplitude) _peakAmplitude = db;
         if (db <= kThresholdDb) {
           _startCooldown();
         }
         break;
-
       case _VADState.cooldown:
         if (db > kThresholdDb) {
-          // Sound resumed — cancel cooldown, stay in recording.
           _cooldownTimer?.cancel();
           _cooldownTimer = null;
           _state = _VADState.recording;
           if (db > _peakAmplitude) _peakAmplitude = db;
         }
         break;
-
       case _VADState.idle:
         break;
     }
   }
 
   void _onAmpError(Object error) {
-    _service.invoke('error', {'message': 'Amplitude stream error: $error'});
-    // Attempt restart after a short delay.
+    _service.invoke('error', {'message': 'Ошибка потока аудио: $error'});
     Future.delayed(const Duration(seconds: 2), () {
       if (_state != _VADState.idle) _beginListening();
     });
   }
-
-  // ── Phase 2: switch to file recording ─────────────────────────────────────
 
   Future<void> _transitionToRecording() async {
     _state = _VADState.recording;
     _peakAmplitude = kThresholdDb;
     _recordingStart = DateTime.now();
 
-    // Stop the stream recording first.
     await _ampSub?.cancel();
     _ampSub = null;
     try {
       await _recorder.stop();
     } catch (_) {}
 
-    // Start recording to a real file.
     final path = await AudioCacheManager.newRecordingPath();
     try {
       await _recorder.start(
@@ -165,19 +161,16 @@ class SleepAudioTriggerService {
         path: path,
       );
 
-      // Re-subscribe to amplitude while recording to the file.
       _ampSub = _recorder
           .onAmplitudeChanged(kPollInterval)
           .listen(_onAmplitude, onError: _onAmpError);
 
       _service.invoke('statusChanged', {'status': 'recording', 'path': path});
     } catch (e) {
-      _service.invoke('error', {'message': 'Failed to start file recording: $e'});
-      await _beginListening(); // fall back to monitoring
+      _service.invoke('error', {'message': 'Ошибка записи в файл: $e'});
+      await _beginListening();
     }
   }
-
-  // ── Cooldown → save ───────────────────────────────────────────────────────
 
   void _startCooldown() {
     _state = _VADState.cooldown;
@@ -190,28 +183,25 @@ class SleepAudioTriggerService {
     final start = _recordingStart ?? DateTime.now();
     final durationSec = DateTime.now().difference(start).inSeconds;
 
-    // Discard very short noise bursts (< kMinDuration).
     if (durationSec < kMinDuration.inSeconds) {
       await _discardCurrentRecording();
       await _beginListening();
       return;
     }
 
-    // Stop recorder and retrieve the saved file path.
     String? savedPath;
     try {
       await _ampSub?.cancel();
       _ampSub = null;
       savedPath = await _recorder.stop();
     } catch (e) {
-      _service.invoke('error', {'message': 'Failed to stop recorder: $e'});
+      _service.invoke('error', {'message': 'Ошибка остановки записи: $e'});
     }
 
     if (savedPath != null) {
       await _persistEvent(savedPath, start, durationSec);
     }
 
-    // Always restart monitoring, even on error.
     await _beginListening();
   }
 
@@ -223,8 +213,6 @@ class SleepAudioTriggerService {
       if (path != null) await AudioCacheManager.deleteFile(path);
     } catch (_) {}
   }
-
-  // ── Hive persistence + UI notification ───────────────────────────────────
 
   Future<void> _persistEvent(
       String filePath, DateTime start, int durationSec) async {
@@ -242,10 +230,9 @@ class SleepAudioTriggerService {
       final box = Hive.box<SoundEvent>(kSoundEventBoxName);
       await box.put(event.id, event);
     } catch (e) {
-      _service.invoke('error', {'message': 'Hive write error: $e'});
+      _service.invoke('error', {'message': 'Ошибка Hive: $e'});
     }
 
-    // Notify the UI isolate so it can refresh the timeline.
     _service.invoke('newEvent', {
       'id':              event.id,
       'filePath':        event.filePath,

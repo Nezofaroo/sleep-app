@@ -1,12 +1,17 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"> <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:label="sleep_tracker_app"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:enableOnBackInvokedCallback="true"> <!-- Добавьте это -->
 
         <activity
             android:name=".MainActivity"
@@ -33,9 +38,10 @@
 
         <service
             android:name="id.flutter.flutter_background_service.BackgroundService"
-            android:foregroundServiceType="microphone"
             android:exported="false"
-            tools:replace="android:exported"/> </application>
+            tools:replace="android:exported"
+            android:foregroundServiceType="microphone" />
+    </application>
 
     <queries>
         <intent>
@@ -43,5 +49,4 @@
             <data android:mimeType="text/plain"/>
         </intent>
     </queries>
-
 </manifest>
