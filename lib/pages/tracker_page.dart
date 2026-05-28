@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import '../database/database_helper.dart';
 import '../models/sleep_record.dart';
 import '../theme/app_colors.dart';
+import '../providers/sleep_audio_provider.dart';
+import 'snore_detection_page.dart';
 
 class TrackerPage extends StatefulWidget {
   const TrackerPage({super.key});
@@ -282,7 +284,8 @@ class _TrackerPageState extends State<TrackerPage> with TickerProviderStateMixin
               ),
               const SizedBox(height: 24),
               // Sleep status or tips
-              if (_isSleeping)
+              if (_isSleeping) ...[  
+                // ── Sleep timer card ───────────────────────────────────
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.all(24),
@@ -299,7 +302,78 @@ class _TrackerPageState extends State<TrackerPage> with TickerProviderStateMixin
                     Text('Started at ${DateFormat('hh:mm a').format(_activeSession!.startTime)}',
                         style: GoogleFonts.montserrat(fontSize: 12, color: c.textSecondary)),
                   ]),
-                )
+                ),
+                const SizedBox(height: 16),
+                // ── Sleep Monitor button ──────────────────────────────
+                GestureDetector(
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => SnoreDetectionPage(
+                        provider: SleepAudioProvider(),
+                      ),
+                    ),
+                  ),
+                  child: Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          const Color(0xFF1E2D50),
+                          const Color(0xFF0E1628),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(18),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFF4B6FDB).withValues(alpha: 0.30),
+                          blurRadius: 16,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF4B6FDB).withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: const Icon(
+                            Icons.hearing_rounded,
+                            color: Color(0xFF4B6FDB),
+                            size: 22,
+                          ),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Sleep Monitor',
+                                  style: GoogleFonts.montserrat(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      color: const Color(0xFFEAEBF2))),
+                              Text('Snore & sleep-talk detection',
+                                  style: GoogleFonts.montserrat(
+                                      fontSize: 11,
+                                      color: const Color(0xFF7A84A8))),
+                            ],
+                          ),
+                        ),
+                        const Icon(
+                          Icons.arrow_forward_ios_rounded,
+                          size: 14,
+                          color: Color(0xFF4B6FDB),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ]
               else
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

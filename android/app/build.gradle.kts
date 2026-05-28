@@ -1,14 +1,26 @@
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
 android {
     namespace = "com.example.sleep_tracker_app"
+
+    // Рекомендуется использовать 35, пока 36 в статусе Preview,
+    // но если плагины требуют 36, оставляем так:
     compileSdk = 36
-    ndkVersion = "27.0.12077973"
+
+    // ИСПРАВЛЕНИЕ: Устанавливаем стабильную версию NDK (LTS)
+    // Версия 28.x часто вызывает 'Access violation' с CMake 3.22
+    ndkVersion = "28.2.13676358"
+
+    // ДОБАВЛЕНО: Указание версии CMake
+    externalNativeBuild {
+        cmake {
+            version = "4.1.2" // Или "3.26.0", если вы скачали её в SDK Manager
+        }
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -16,24 +28,19 @@ android {
     }
 
     kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_17.toString()
+        jvmTarget = "17"
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.example.sleep_tracker_app"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = 35
+        minSdk = 24 // Рекомендуется указать явно вместо flutter.minSdkVersion для JNI
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
         }
     }

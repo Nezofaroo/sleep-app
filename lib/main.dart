@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:path_provider/path_provider.dart';
 import 'theme/neumorphic_theme.dart';
 import 'theme/dark_velvet_theme.dart';
 import 'theme/theme_notifier.dart';
@@ -9,9 +10,19 @@ import 'pages/tracker_page.dart';
 import 'pages/discover_page.dart';
 import 'pages/statistics_page.dart';
 import 'pages/profile_page.dart';
+import 'models/sound_event.dart';
+import 'services/background_service_init.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Initialise Hive for the UI isolate.
+  final docsDir = await getApplicationDocumentsDirectory();
+  await initSoundEventHive(docsDir.path);
+
+  // Register background service handlers (must be called before runApp).
+  await configureBackgroundService();
+
   runApp(const SleepTrackerApp());
 }
 
@@ -22,7 +33,7 @@ class SleepTrackerApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return ValueListenableBuilder<ThemeMode>(
       valueListenable: themeNotifier,
-      builder: (_, mode, __) {
+      builder: (context, mode, child) {
         final isDark = mode == ThemeMode.dark;
         SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
