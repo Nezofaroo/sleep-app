@@ -7,7 +7,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import 'theme/neumorphic_theme.dart';
 import 'theme/dark_velvet_theme.dart';
-import 'theme/theme_notifier.dart';
+// theme_notifier.dart not needed — dark mode is fixed
 import 'theme/app_colors.dart';
 import 'pages/tracker_page.dart';
 import 'pages/discover_page.dart';
@@ -61,31 +61,24 @@ class SleepTrackerApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<ThemeMode>(
-      valueListenable: themeNotifier,
-      builder: (context, mode, child) {
-        final isDark = mode == ThemeMode.dark;
-        SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
-          statusBarColor: Colors.transparent,
-          statusBarIconBrightness:
-              isDark ? Brightness.light : Brightness.dark,
-          systemNavigationBarColor:
-              isDark ? const Color(0xFF12121A) : NeumorphicColors.background,
-          systemNavigationBarIconBrightness:
-              isDark ? Brightness.light : Brightness.dark,
-        ));
-        return MaterialApp(
-          title: 'Sleep.ly',
-          debugShowCheckedModeBanner: false,
-          theme: NeumorphicTheme.theme,
-          darkTheme: DarkVelvetTheme.theme,
-          themeMode: mode,
-          home: MainShell(
-            alarmProvider: alarmProvider,
-            audioProvider: audioProvider,
-          ),
-        );
-      },
+    // Dark Mode — единственный и основной режим приложения.
+    // StatusBar и навигационная панель всегда настроены под тёмный фон.
+    SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: Color(0xFF060B18),
+      systemNavigationBarIconBrightness: Brightness.light,
+    ));
+    return MaterialApp(
+      title: 'Sleep.ly',
+      debugShowCheckedModeBanner: false,
+      theme: NeumorphicTheme.theme,
+      darkTheme: DarkVelvetTheme.theme,
+      themeMode: ThemeMode.dark,
+      home: MainShell(
+        alarmProvider: alarmProvider,
+        audioProvider: audioProvider,
+      ),
     );
   }
 }
