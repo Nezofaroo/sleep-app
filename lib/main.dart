@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:hive/hive.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 
@@ -20,6 +21,8 @@ import 'providers/sleep_audio_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await initializeDateFormatting('ru_RU');
 
   // --- БЛОК ЗАПРОСА РАЗРЕШЕНИЙ ---
   // Запрашиваем разрешения перед инициализацией сервиса.
