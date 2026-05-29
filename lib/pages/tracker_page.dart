@@ -1,46 +1,97 @@
 import 'dart:async';
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../database/database_helper.dart';
 import '../models/sleep_record.dart';
-import '../theme/app_colors.dart';
+import '../models/alarm_settings.dart';
+import '../models/sound_event.dart';
+import '../providers/alarm_settings_provider.dart';
 import '../providers/sleep_audio_provider.dart';
+import '../widgets/pulse_indicator.dart';
+import 'alarm_settings_page.dart';
 import 'snore_detection_page.dart';
 
+// ── Цвета ─────────────────────────────────────────────────────────────────────
+class _C {
+  static const bg      = Color(0xFF080C14);
+  static const surface = Color(0xFF111827);
+  static const accent  = Color(0xFF4F6EF7);
+  static const cream   = Color(0xFFEEF0F8);
+  static const muted   = Color(0xFF7A84A8);
+  static const danger  = Color(0xFFE05C6A);
+  static const success = Color(0xFF4CAF7D);
+  static const divider = Color(0xFF1E2D50);
+  static const glass   = Color(0xFF1A2540);
+}
+
+/// Главный экран трекинга сна Sleep.ly.
+///
+/// Архитектура:
+///  - [DatabaseHelper]          → запись/чтение сессий сна (sqflite)
+///  - [AlarmSettingsProvider]   → настройки будильника (Hive)
+///  - [SleepAudioProvider]      → VAD-статус и список звуковых событий (BG service)
+///
+/// Инициализация фонового аудио-сервиса происходит внутри [SleepAudioProvider].
+/// TrackerPage только читает его состояние и подписывается на события через
+/// [ListenableBuilder].
 class TrackerPage extends StatefulWidget {
-  const TrackerPage({super.key});
+  final AlarmSettingsProvider alarmProvider;
+  final SleepAudioProvider    audioProvider;
+
+  const TrackerPage({
+    super.key,
+    required this.alarmProvider,
+    required this.audioProvider,
+  });
+
   @override
   State<TrackerPage> createState() => _TrackerPageState();
 }
 
-class _TrackerPageState extends State<TrackerPage> with TickerProviderStateMixin {
+class _TrackerPageState extends State<TrackerPage>
+    with TickerProviderStateMixin {
   final DatabaseHelper _db = DatabaseHelper();
-  bool _isSleeping = false;
+
+  // ── Сессия сна ─────────────────────────────────────────────────────────────
+  bool         _isSleeping   = false;
   SleepRecord? _activeSession;
-  TimeOfDay? _alarmTime;
-  Duration _elapsed = Duration.zero;
-  Timer? _timer;
-  late AnimationController _pulseCtrl;
-  late Animation<double> _pulseAnim;
+  Duration     _elapsed      = Duration.zero;
+  Timer?       _timer;
+
+  // ── Кнопка: анимация нажатия ───────────────────────────────────────────────
+  late final AnimationController _btnCtrl;
+  late final Animation<double>   _btnScale;
+
+  AlarmSettings  get _alarm => widget.alarmProvider.settings;
+  SleepAudioProvider get _audio => widget.audioProvider;
 
   @override
   void initState() {
     super.initState();
-    _pulseCtrl = AnimationController(vsync: this, duration: const Duration(seconds: 2))
-      ..repeat(reverse: true);
-    _pulseAnim = Tween<double>(begin: 0.96, end: 1.04)
-        .animate(CurvedAnimation(parent: _pulseCtrl, curve: Curves.easeInOut));
+    _btnCtrl  = AnimationController(
+        vsync: this, duration: const Duration(milliseconds: 120));
+    _btnScale = Tween<double>(begin: 1.0, end: 0.93)
+        .animate(CurvedAnimation(parent: _btnCtrl, curve: Curves.easeInOut));
     _loadActiveSession();
   }
 
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _btnCtrl.dispose();
+    super.dispose();
+  }
+
+  // ── Загрузка активной сессии из БД ────────────────────────────────────────
   Future<void> _loadActiveSession() async {
     final s = await _db.getActiveSession();
     if (s != null && mounted) {
       setState(() {
         _activeSession = s;
-        _isSleeping = true;
-        _elapsed = DateTime.now().difference(s.startTime);
+        _isSleeping    = true;
+        _elapsed       = DateTime.now().difference(s.startTime);
       });
       _startTimer();
     }
@@ -50,103 +101,172 @@ class _TrackerPageState extends State<TrackerPage> with TickerProviderStateMixin
     _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted && _activeSession != null) {
-        setState(() => _elapsed = DateTime.now().difference(_activeSession!.startTime));
+        setState(() =>
+            _elapsed = DateTime.now().difference(_activeSession!.startTime));
       }
     });
   }
 
+  // ── Старт / стоп сна ───────────────────────────────────────────────────────
   Future<void> _toggleSleep() async {
+    await _btnCtrl.forward();
+    await _btnCtrl.reverse();
+
     if (_isSleeping) {
       _timer?.cancel();
-      final end = DateTime.now();
+
+      // Останавливаем VAD-сервис фонового мониторинга
+      await _audio.stopMonitoring();
+
+      final end  = DateTime.now();
       final mins = end.difference(_activeSession!.startTime).inMinutes;
       final updated = _activeSession!.copyWith(endTime: end, durationMinutes: mins);
       await _db.updateSleepRecord(updated);
-      _showQualityDialog(updated);
+
+      if (mounted) _showQualityDialog(updated);
     } else {
-      final now = DateTime.now();
+      final now    = DateTime.now();
       final record = SleepRecord(
         startTime: now,
-        alarmTime: _alarmTime != null
-            ? '${_alarmTime!.hour.toString().padLeft(2, '0')}:${_alarmTime!.minute.toString().padLeft(2, '0')}'
+        alarmTime: _alarm.alarmEnabled
+            ? _alarm.formattedAlarmTime
             : null,
       );
       final id = await _db.insertSleepRecord(record);
-      setState(() {
-        _activeSession = record.copyWith(id: id);
-        _isSleeping = true;
-        _elapsed = Duration.zero;
-      });
-      _startTimer();
+
+      // ── ТОЧКА ИНТЕГРАЦИИ VAD ──────────────────────────────────────────────
+      // SleepAudioProvider.startMonitoring() запускает flutter_background_service,
+      // который инициализирует SleepAudioTriggerService и начинает опрос микрофона.
+      // TrackerPage реагирует на изменения через ListenableBuilder(_audio).
+      await _audio.startMonitoring();
+      // ─────────────────────────────────────────────────────────────────────
+
+      if (mounted) {
+        setState(() {
+          _activeSession = record.copyWith(id: id);
+          _isSleeping    = true;
+          _elapsed       = Duration.zero;
+        });
+        _startTimer();
+      }
     }
   }
 
+  // ── Диалог качества сна ────────────────────────────────────────────────────
   void _showQualityDialog(SleepRecord record) {
-    String selected = 'Good';
+    // Если настроена оценка настроения — добавляем шаг смайликов
+    String? quality;
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (ctx) {
-        final c = AppColors.of(ctx);
         return StatefulBuilder(
           builder: (ctx, setS) => AlertDialog(
-            backgroundColor: c.cardBg,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-            title: Text('How did you sleep?',
+            backgroundColor: _C.surface,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24)),
+            title: Text('Как вы спали?',
                 style: GoogleFonts.montserrat(
-                    fontWeight: FontWeight.w700, fontSize: 18, color: c.textPrimary)),
+                    fontSize: 18,
+                    fontWeight: FontWeight.w800,
+                    color: _C.cream)),
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text('Total: ${record.formattedDuration}',
+                Text(record.formattedDuration,
                     style: GoogleFonts.montserrat(
-                        fontSize: 14, color: c.accent, fontWeight: FontWeight.w600)),
+                        fontSize: 14,
+                        color: _C.accent,
+                        fontWeight: FontWeight.w600)),
                 const SizedBox(height: 20),
-                ...['Poor', 'Fair', 'Good', 'Excellent'].map((q) {
-                  final qc = {'Poor': const Color(0xFFE57373), 'Fair': const Color(0xFFFFB74D), 'Good': c.accent, 'Excellent': const Color(0xFF66BB6A)}[q]!;
-                  final isSelected = selected == q;
+                ...{
+                  'Плохо':      _C.danger,
+                  'Сносно':     const Color(0xFFFFB74D),
+                  'Хорошо':     _C.accent,
+                  'Отлично':    _C.success,
+                }.entries.map((e) {
+                  final sel = quality == e.key;
                   return GestureDetector(
-                    onTap: () => setS(() => selected = q),
+                    onTap: () => setS(() => quality = e.key),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 180),
                       margin: const EdgeInsets.only(bottom: 10),
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      decoration: isSelected
-                          ? BoxDecoration(
-                              color: qc.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: qc, width: 1.5))
-                          : c.cardRaised(radius: 12),
-                      child: Row(
-                        children: [
-                          Container(width: 10, height: 10,
-                              decoration: BoxDecoration(
-                                  color: isSelected ? qc : c.textDisabled,
-                                  shape: BoxShape.circle)),
-                          const SizedBox(width: 14),
-                          Text(q, style: GoogleFonts.montserrat(
-                              fontSize: 14, fontWeight: FontWeight.w600,
-                              color: isSelected ? qc : c.textSecondary)),
-                        ],
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: sel
+                            ? e.value.withValues(alpha: 0.12)
+                            : _C.glass.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                            color: sel
+                                ? e.value
+                                : _C.divider,
+                            width: 1),
                       ),
+                      child: Row(children: [
+                        Container(
+                          width: 10, height: 10,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: sel ? e.value : _C.muted,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(e.key,
+                            style: GoogleFonts.montserrat(
+                                fontSize: 14,
+                                fontWeight: sel
+                                    ? FontWeight.w700
+                                    : FontWeight.w400,
+                                color: sel ? e.value : _C.muted)),
+                      ]),
                     ),
                   );
                 }),
+                // Опрос настроения (смайлики), если включён в настройках
+                if (_alarm.wakeMoodEnabled) ...[
+                  const Divider(color: _C.divider, height: 24),
+                  Text('Настроение',
+                      style: GoogleFonts.montserrat(
+                          fontSize: 12, color: _C.muted)),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: ['😴', '😕', '😐', '🙂', '😄'].map((e) =>
+                      GestureDetector(
+                        onTap: () {},
+                        child: Text(e,
+                            style: const TextStyle(fontSize: 28)),
+                      )).toList(),
+                  ),
+                ],
               ],
             ),
             actions: [
-              TextButton(
-                onPressed: () async {
-                  await _db.updateSleepRecord(record.copyWith(quality: selected));
-                  if (ctx.mounted) Navigator.of(ctx).pop();
-                  setState(() { _isSleeping = false; _activeSession = null; _elapsed = Duration.zero; });
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
-                  decoration: AppColors.of(ctx).accentButton(radius: 30),
-                  child: Text('Save', style: GoogleFonts.montserrat(
-                      color: Colors.white, fontWeight: FontWeight.w700, fontSize: 14)),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: _C.accent,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14)),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 32, vertical: 12),
                 ),
+                onPressed: () async {
+                  await _db.updateSleepRecord(
+                      record.copyWith(quality: quality ?? 'Хорошо'));
+                  if (ctx.mounted) Navigator.of(ctx).pop();
+                  setState(() {
+                    _isSleeping    = false;
+                    _activeSession = null;
+                    _elapsed       = Duration.zero;
+                  });
+                },
+                child: Text('Сохранить',
+                    style: GoogleFonts.montserrat(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white)),
               ),
             ],
           ),
@@ -155,332 +275,615 @@ class _TrackerPageState extends State<TrackerPage> with TickerProviderStateMixin
     );
   }
 
-  Future<void> _pickAlarm() async {
-    final c = AppColors.of(context);
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: _alarmTime ?? TimeOfDay.now(),
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          timePickerTheme: TimePickerThemeData(
-            backgroundColor: c.cardBg,
-            hourMinuteColor: c.chartBg,
-            hourMinuteTextColor: c.accent,
-            dialBackgroundColor: c.chartBg,
-            dialHandColor: c.accent,
-            dialTextColor: c.textPrimary,
-            entryModeIconColor: c.accent,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          ),
-        ),
-        child: child!,
-      ),
-    );
-    if (picked != null) setState(() => _alarmTime = picked);
-  }
-
-  String get _elapsedFormatted {
+  // ── Форматирование таймера ─────────────────────────────────────────────────
+  String get _elapsedStr {
     final h = _elapsed.inHours.toString().padLeft(2, '0');
     final m = (_elapsed.inMinutes % 60).toString().padLeft(2, '0');
     final s = (_elapsed.inSeconds % 60).toString().padLeft(2, '0');
-    return '$h : $m : $s';
+    return '$h:$m:$s';
+  }
+
+  // ── Навигация на настройки ─────────────────────────────────────────────────
+  void _openAlarmSettings() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => AlarmSettingsPage(provider: widget.alarmProvider),
+    ));
+  }
+
+  void _openSleepMonitor() {
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => SnoreDetectionPage(provider: _audio),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      // Одновременно слушаем и настройки будильника, и VAD-провайдер
+      listenable: Listenable.merge([widget.alarmProvider, _audio]),
+      builder: (context, _) => Scaffold(
+        backgroundColor: _C.bg,
+        body: Stack(
+          children: [
+            _buildBackground(),
+            SafeArea(
+              child: CustomScrollView(
+                slivers: [
+                  SliverToBoxAdapter(child: _buildHeader()),
+                  SliverToBoxAdapter(child: _buildStatusCard()),
+                  if (_isSleeping) ...[
+                    SliverToBoxAdapter(child: _buildTimerCard()),
+                    SliverToBoxAdapter(child: _buildMonitorCard()),
+                    SliverToBoxAdapter(child: _buildTimelineSection()),
+                  ] else ...[
+                    SliverToBoxAdapter(child: _buildAlarmCard()),
+                    SliverToBoxAdapter(child: _buildBedtimeCard()),
+                    SliverToBoxAdapter(child: _buildTipsCard()),
+                  ],
+                  SliverToBoxAdapter(child: _buildSleepButton()),
+                  const SliverToBoxAdapter(child: SizedBox(height: 32)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Фоновый радиальный градиент ───────────────────────────────────────────
+  Widget _buildBackground() => Container(
+    decoration: const BoxDecoration(
+      gradient: RadialGradient(
+        center: Alignment(-0.3, -0.5),
+        radius: 1.2,
+        colors: [Color(0xFF14203A), _C.bg],
+      ),
+    ),
+  );
+
+  // ── Шапка ─────────────────────────────────────────────────────────────────
+  Widget _buildHeader() {
+    final now = DateTime.now();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(_greeting(),
+                style: GoogleFonts.montserrat(
+                    fontSize: 13, color: _C.muted, fontWeight: FontWeight.w500)),
+            const SizedBox(height: 2),
+            Text('Sleep.ly',
+                style: GoogleFonts.montserrat(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w800,
+                    color: _C.cream)),
+          ]),
+          // Часы + дата
+          _GlassChip(
+            child: Text(DateFormat('HH:mm').format(now),
+                style: GoogleFonts.montserrat(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: _C.accent)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ── Карточка статуса VAD ──────────────────────────────────────────────────
+  Widget _buildStatusCard() {
+    final isActive = _audio.isActive;
+    final isRec    = _audio.status == MonitoringStatus.recording;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      child: _GlassCard(
+        child: Row(children: [
+          // Пульсирующий индикатор — только при активном мониторинге
+          if (isActive)
+            PulseIndicator(
+              color: isRec ? const Color(0xFF7C5FDB) : _C.accent,
+              size: 36,
+              ringCount: 2,
+              child: Icon(
+                isRec ? Icons.mic_rounded : Icons.hearing_rounded,
+                color: isRec ? const Color(0xFF7C5FDB) : _C.accent,
+                size: 16,
+              ),
+            )
+          else
+            Container(
+              width: 48, height: 48,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                    color: _C.muted.withValues(alpha: 0.3), width: 1),
+              ),
+              child: const Icon(Icons.mic_off_rounded,
+                  color: _C.muted, size: 20),
+            ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+              Text(
+                isRec ? 'Запись звука...'
+                    : isActive ? 'Слушаю окружение'
+                    : 'Мониторинг не активен',
+                style: GoogleFonts.montserrat(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: isRec
+                        ? const Color(0xFF7C5FDB)
+                        : isActive ? _C.accent : _C.muted),
+              ),
+              Text(
+                isActive
+                    ? 'VAD -35 dBFS · Cooldown 1.5s'
+                    : 'Начните сон для мониторинга',
+                style: GoogleFonts.montserrat(
+                    fontSize: 11, color: _C.muted),
+              ),
+            ]),
+          ),
+          // Кол-во событий за ночь
+          if (_audio.events.isNotEmpty)
+            _GlassChip(
+              child: Text('${_audio.events.length}',
+                  style: GoogleFonts.montserrat(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: _C.accent)),
+            ),
+        ]),
+      ),
+    );
+  }
+
+  // ── Таймер активной сессии ────────────────────────────────────────────────
+  Widget _buildTimerCard() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      child: _GlassCard(
+        child: Column(children: [
+          Text('Сон в процессе',
+              style: GoogleFonts.montserrat(
+                  fontSize: 12,
+                  color: _C.accent,
+                  fontWeight: FontWeight.w600)),
+          const SizedBox(height: 8),
+          Text(_elapsedStr,
+              style: GoogleFonts.montserrat(
+                  fontSize: 42,
+                  fontWeight: FontWeight.w800,
+                  color: _C.cream,
+                  letterSpacing: 2)),
+          const SizedBox(height: 4),
+          Text(
+            'Начало: ${DateFormat('HH:mm').format(_activeSession!.startTime)}',
+            style: GoogleFonts.montserrat(
+                fontSize: 12, color: _C.muted),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  // ── Кнопка перехода на монитор сна ───────────────────────────────────────
+  Widget _buildMonitorCard() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+      child: GestureDetector(
+        onTap: _openSleepMonitor,
+        child: Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [_C.accent.withValues(alpha: 0.15), _C.glass],
+            ),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+                color: _C.accent.withValues(alpha: 0.35), width: 0.8),
+            boxShadow: [
+              BoxShadow(
+                  color: _C.accent.withValues(alpha: 0.2),
+                  blurRadius: 16,
+                  offset: const Offset(0, 6)),
+            ],
+          ),
+          child: Row(children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: _C.accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.hearing_rounded,
+                  color: _C.accent, size: 22),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Text('Монитор сна',
+                    style: GoogleFonts.montserrat(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: _C.cream)),
+                Text('Запись храпа и разговоров',
+                    style: GoogleFonts.montserrat(
+                        fontSize: 11, color: _C.muted)),
+              ]),
+            ),
+            const Icon(Icons.arrow_forward_ios_rounded,
+                color: _C.accent, size: 14),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  // ── Таймлайн звуковых событий ─────────────────────────────────────────────
+  Widget _buildTimelineSection() {
+    final events = _audio.events;
+    if (events.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+        child: _GlassCard(
+          child: Column(children: [
+            Icon(Icons.nights_stay_outlined,
+                size: 40, color: _C.muted.withValues(alpha: 0.4)),
+            const SizedBox(height: 12),
+            Text('Тишина за ночь',
+                style: GoogleFonts.montserrat(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    color: _C.muted)),
+            Text('Обнаруженные звуки появятся здесь',
+                style: GoogleFonts.montserrat(
+                    fontSize: 12, color: _C.muted.withValues(alpha: 0.6)),
+                textAlign: TextAlign.center),
+          ]),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
+          child: Text('Звуки за ночь',
+              style: GoogleFonts.montserrat(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: _C.cream)),
+        ),
+        ...events.take(5).map((e) => _EventTile(event: e)),
+        if (events.length > 5)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: GestureDetector(
+              onTap: _openSleepMonitor,
+              child: Text('Показать все (${events.length})',
+                  style: GoogleFonts.montserrat(
+                      fontSize: 13,
+                      color: _C.accent,
+                      fontWeight: FontWeight.w600)),
+            ),
+          ),
+      ],
+    );
+  }
+
+  // ── Карточка будильника ───────────────────────────────────────────────────
+  Widget _buildAlarmCard() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+      child: GestureDetector(
+        onTap: _openAlarmSettings,
+        child: _GlassCard(
+          child: Row(children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: _C.accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.alarm_rounded,
+                  color: _C.accent, size: 22),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Text('Будильник',
+                    style: GoogleFonts.montserrat(
+                        fontSize: 12,
+                        color: _C.muted,
+                        fontWeight: FontWeight.w500)),
+                Text(
+                  _alarm.alarmEnabled
+                      ? _alarm.formattedAlarmTime
+                      : 'Не установлен',
+                  style: GoogleFonts.montserrat(
+                      fontSize: 28,
+                      fontWeight: FontWeight.w800,
+                      color: _alarm.alarmEnabled ? _C.cream : _C.muted),
+                ),
+              ]),
+            ),
+            _GlassChip(
+              color: _alarm.alarmEnabled
+                  ? _C.accent.withValues(alpha: 0.15)
+                  : null,
+              child: Text(_alarm.alarmEnabled ? 'Вкл.' : 'Настроить',
+                  style: GoogleFonts.montserrat(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: _alarm.alarmEnabled ? _C.accent : _C.muted)),
+            ),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  // ── Карточка времени отхода ко сну ────────────────────────────────────────
+  Widget _buildBedtimeCard() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+      child: GestureDetector(
+        onTap: _openAlarmSettings,
+        child: _GlassCard(
+          child: Row(children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF7C5FDB).withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.bedtime_rounded,
+                  color: Color(0xFF7C5FDB), size: 22),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Text('Время отхода ко сну',
+                    style: GoogleFonts.montserrat(
+                        fontSize: 12,
+                        color: _C.muted,
+                        fontWeight: FontWeight.w500)),
+                Text(_alarm.formattedBedtime,
+                    style: GoogleFonts.montserrat(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        color: _C.cream)),
+              ]),
+            ),
+            const Icon(Icons.chevron_right_rounded,
+                color: _C.muted, size: 20),
+          ]),
+        ),
+      ),
+    );
+  }
+
+  // ── Советы по сну (пустой стейт) ─────────────────────────────────────────
+  Widget _buildTipsCard() {
+    const tips = [
+      (Icons.thermostat_outlined, '18–20°C — оптимальная температура для сна'),
+      (Icons.phone_android_outlined, 'Без экранов за час до сна'),
+      (Icons.schedule_outlined, '7–9 часов — норма для взрослых'),
+    ];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
+      child: _GlassCard(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Советы',
+                style: GoogleFonts.montserrat(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: _C.cream)),
+            const SizedBox(height: 12),
+            ...tips.map((t) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Row(children: [
+                Icon(t.$1, color: _C.accent, size: 18),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(t.$2,
+                      style: GoogleFonts.montserrat(
+                          fontSize: 12,
+                          color: _C.muted,
+                          fontWeight: FontWeight.w500)),
+                ),
+              ]),
+            )),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Главная кнопка «Начать / Завершить сон» (thumb zone) ──────────────────
+  Widget _buildSleepButton() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 32, 24, 0),
+      child: ScaleTransition(
+        scale: _btnScale,
+        child: GestureDetector(
+          onTap: _toggleSleep,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 20),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: _isSleeping
+                    ? [const Color(0xFFE05C6A), const Color(0xFF9B2C3E)]
+                    : [_C.accent, const Color(0xFF3A5BC7)],
+              ),
+              borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: (_isSleeping ? _C.danger : _C.accent)
+                      .withValues(alpha: 0.45),
+                  blurRadius: 24,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  _isSleeping
+                      ? Icons.wb_sunny_rounded
+                      : Icons.bedtime_rounded,
+                  color: Colors.white,
+                  size: 22,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  _isSleeping ? 'Завершить сон' : 'Начать сон',
+                  style: GoogleFonts.montserrat(
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   String _greeting() {
     final h = DateTime.now().hour;
-    if (h < 12) return 'morning';
-    if (h < 17) return 'afternoon';
-    return 'evening';
+    if (h < 6)  return 'Доброй ночи 🌙';
+    if (h < 12) return 'Доброе утро ☀️';
+    if (h < 17) return 'Добрый день 🌤';
+    return 'Добрый вечер 🌙';
   }
+}
 
-  @override
-  void dispose() { _timer?.cancel(); _pulseCtrl.dispose(); super.dispose(); }
+// ══════════════════════════════════════════════════════════════════════════════
+// Локальные переиспользуемые виджеты
+// ══════════════════════════════════════════════════════════════════════════════
+
+/// Glassmorphism-карточка.
+class _GlassCard extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+
+  const _GlassCard({
+    required this.child,
+    this.padding = const EdgeInsets.all(20),
+  });
 
   @override
   Widget build(BuildContext context) {
-    final c = AppColors.of(context);
-    final now = DateTime.now();
-    return Scaffold(
-      backgroundColor: c.background,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Good ${_greeting()},',
-                        style: GoogleFonts.montserrat(
-                            fontSize: 14, color: c.textSecondary, fontWeight: FontWeight.w500)),
-                    const SizedBox(height: 2),
-                    Text('Sleep Tracker',
-                        style: GoogleFonts.montserrat(
-                            fontSize: 22, fontWeight: FontWeight.w800, color: c.textPrimary)),
-                  ]),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                    decoration: c.cardRaised(radius: 50),
-                    child: Text(DateFormat('HH:mm').format(now),
-                        style: GoogleFonts.montserrat(
-                            fontSize: 18, fontWeight: FontWeight.w700, color: c.accent)),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 28),
-              // Alarm card
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: c.cardRaised(radius: 20),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: c.iconBadge(radius: 14),
-                      child: Icon(Icons.alarm_rounded, color: c.accent, size: 26),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('Wake Alarm',
-                            style: GoogleFonts.montserrat(
-                                fontSize: 12, color: c.textSecondary, fontWeight: FontWeight.w500)),
-                        const SizedBox(height: 4),
-                        Text(
-                          _alarmTime != null
-                              ? '${_alarmTime!.hour.toString().padLeft(2, '0')}:${_alarmTime!.minute.toString().padLeft(2, '0')}'
-                              : 'Not set',
-                          style: GoogleFonts.montserrat(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w800,
-                              color: _alarmTime != null ? c.textPrimary : c.textDisabled),
-                        ),
-                      ]),
-                    ),
-                    Column(children: [
-                      GestureDetector(
-                        onTap: _pickAlarm,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                          decoration: c.accentButton(radius: 30),
-                          child: Text(_alarmTime != null ? 'Edit' : 'Set',
-                              style: GoogleFonts.montserrat(
-                                  fontSize: 12, fontWeight: FontWeight.w700, color: c.white)),
-                        ),
-                      ),
-                      if (_alarmTime != null) ...[
-                        const SizedBox(height: 8),
-                        GestureDetector(
-                          onTap: () => setState(() => _alarmTime = null),
-                          child: Icon(Icons.close_rounded, size: 18, color: c.textSecondary),
-                        ),
-                      ],
-                    ]),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              // Sleep status or tips
-              if (_isSleeping) ...[  
-                // ── Sleep timer card ───────────────────────────────────
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(24),
-                  decoration: c.cardPressed(radius: 20),
-                  child: Column(children: [
-                    Text('Sleep in Progress',
-                        style: GoogleFonts.montserrat(
-                            fontSize: 13, fontWeight: FontWeight.w600, color: c.accent)),
-                    const SizedBox(height: 12),
-                    Text(_elapsedFormatted,
-                        style: GoogleFonts.montserrat(
-                            fontSize: 36, fontWeight: FontWeight.w800, color: c.textPrimary)),
-                    const SizedBox(height: 6),
-                    Text('Started at ${DateFormat('hh:mm a').format(_activeSession!.startTime)}',
-                        style: GoogleFonts.montserrat(fontSize: 12, color: c.textSecondary)),
-                  ]),
-                ),
-                const SizedBox(height: 16),
-                // ── Sleep Monitor button ──────────────────────────────
-                GestureDetector(
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => SnoreDetectionPage(
-                        provider: SleepAudioProvider(),
-                      ),
-                    ),
-                  ),
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          const Color(0xFF1E2D50),
-                          const Color(0xFF0E1628),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(18),
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFF4B6FDB).withValues(alpha: 0.30),
-                          blurRadius: 16,
-                          offset: const Offset(0, 6),
-                        ),
-                      ],
-                    ),
-                    child: Row(
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFF4B6FDB).withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: const Icon(
-                            Icons.hearing_rounded,
-                            color: Color(0xFF4B6FDB),
-                            size: 22,
-                          ),
-                        ),
-                        const SizedBox(width: 14),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text('Sleep Monitor',
-                                  style: GoogleFonts.montserrat(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                      color: const Color(0xFFEAEBF2))),
-                              Text('Snore & sleep-talk detection',
-                                  style: GoogleFonts.montserrat(
-                                      fontSize: 11,
-                                      color: const Color(0xFF7A84A8))),
-                            ],
-                          ),
-                        ),
-                        const Icon(
-                          Icons.arrow_forward_ios_rounded,
-                          size: 14,
-                          color: Color(0xFF4B6FDB),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ]
-              else
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Sleep Tips',
-                        style: GoogleFonts.montserrat(
-                            fontSize: 14, fontWeight: FontWeight.w700, color: c.textPrimary)),
-                    const SizedBox(height: 14),
-                    ...[
-                      (Icons.thermostat_outlined, 'Keep room at 65–68°F (18–20°C)'),
-                      (Icons.phone_android_outlined, 'No screens 1 hour before bed'),
-                      (Icons.schedule_outlined, '7–9 hours is ideal for most adults'),
-                    ].map((t) => Container(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                          decoration: c.cardRaised(radius: 14),
-                          child: Row(children: [
-                            Icon(t.$1, color: c.accent, size: 20),
-                            const SizedBox(width: 14),
-                            Expanded(
-                              child: Text(t.$2,
-                                  style: GoogleFonts.montserrat(
-                                      fontSize: 13,
-                                      color: c.textSecondary,
-                                      fontWeight: FontWeight.w500)),
-                            ),
-                          ]),
-                        )),
-                  ],
-                ),
-              const SizedBox(height: 36),
-              // Sleep button
-              Center(
-                child: AnimatedBuilder(
-                  animation: _pulseAnim,
-                  builder: (context, child) => Transform.scale(
-                      scale: _isSleeping ? _pulseAnim.value : 1.0, child: child),
-                  child: GestureDetector(
-                    onTap: _toggleSleep,
-                    child: Container(
-                      width: 190, height: 190,
-                      decoration: _isSleeping
-                          ? BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: c.accentGradient),
-                              boxShadow: [
-                                BoxShadow(
-                                    color: c.accent.withValues(alpha: 0.45),
-                                    blurRadius: 30,
-                                    offset: const Offset(0, 12)),
-                                BoxShadow(
-                                    color: c.shadowLight.withValues(
-                                        alpha: c.isDark ? 0.05 : 1.0),
-                                    blurRadius: 16,
-                                    offset: const Offset(-8, -8)),
-                              ])
-                          : BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: c.cardBg,
-                              boxShadow: [
-                                BoxShadow(
-                                    color: c.shadowDark,
-                                    offset: const Offset(10, 10),
-                                    blurRadius: 20),
-                                BoxShadow(
-                                    color: c.shadowLight.withValues(
-                                        alpha: c.isDark ? 0.05 : 1.0),
-                                    offset: const Offset(-10, -10),
-                                    blurRadius: 20),
-                              ]),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            _isSleeping ? Icons.wb_sunny_rounded : Icons.bedtime_rounded,
-                            size: 52,
-                            color: _isSleeping ? c.white : c.accent,
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            _isSleeping ? 'Wake Up' : 'Sleep',
-                            style: GoogleFonts.montserrat(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w800,
-                              color: _isSleeping ? c.white : c.textPrimary,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Center(
-                child: Text(
-                  _isSleeping ? 'Tap to wake up' : 'Tap to start sleeping',
-                  style: GoogleFonts.montserrat(fontSize: 13, color: c.textSecondary, fontWeight: FontWeight.w500),
-                ),
-              ),
-              const SizedBox(height: 24),
-            ],
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+        child: Container(
+          padding: padding,
+          decoration: BoxDecoration(
+            color: _C.glass.withValues(alpha: 0.55),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+                color: Colors.white.withValues(alpha: 0.07), width: 0.8),
           ),
+          child: child,
         ),
+      ),
+    );
+  }
+}
+
+/// Маленький стеклянный чип (для часов, бейджей).
+class _GlassChip extends StatelessWidget {
+  final Widget child;
+  final Color? color;
+
+  const _GlassChip({required this.child, this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: color ?? _C.glass.withValues(alpha: 0.6),
+        borderRadius: BorderRadius.circular(30),
+        border: Border.all(
+            color: Colors.white.withValues(alpha: 0.08), width: 0.8),
+      ),
+      child: child,
+    );
+  }
+}
+
+/// Плитка события в таймлайне (храп/разговор).
+class _EventTile extends StatelessWidget {
+  final SoundEvent event;
+  const _EventTile({required this.event});
+
+  static const _typeColors = {
+    0: Color(0xFF4F6EF7), // mumble
+    1: Color(0xFF4F6EF7), // snore
+    2: Color(0xFF7C5FDB), // talk
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _typeColors[event.typeIndex] ?? _C.accent;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 5),
+      child: Row(
+        children: [
+          // Левый акцент-бар таймлайна
+          Container(
+            width: 3, height: 40,
+            decoration: BoxDecoration(
+                color: color, borderRadius: BorderRadius.circular(3)),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+              Text('${event.type.emoji}  ${event.type.label}',
+                  style: GoogleFonts.montserrat(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: color)),
+              Text(DateFormat('HH:mm:ss').format(event.startTime),
+                  style: GoogleFonts.montserrat(
+                      fontSize: 11, color: _C.muted)),
+            ]),
+          ),
+          Text(event.formattedDuration,
+              style: GoogleFonts.montserrat(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: _C.cream)),
+        ],
       ),
     );
   }

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:hive/hive.dart';
 import 'package:path_provider/path_provider.dart';
-// Добавляем импорт для разрешений
 import 'package:permission_handler/permission_handler.dart';
 
 import 'theme/neumorphic_theme.dart';
@@ -15,6 +15,8 @@ import 'pages/statistics_page.dart';
 import 'pages/profile_page.dart';
 import 'models/sound_event.dart';
 import 'services/background_service_init.dart';
+import 'providers/alarm_settings_provider.dart';
+import 'providers/sleep_audio_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,19 +30,34 @@ void main() async {
   ].request();
   // -------------------------------
 
-  // Initialise Hive for the UI isolate.
+  // Инициализируем Hive для UI-изолята (звуковые события + настройки).
   final docsDir = await getApplicationDocumentsDirectory();
   await initSoundEventHive(docsDir.path);
+  // Открываем примитивный box для настроек будильника (не требует TypeAdapter).
+  await Hive.openBox('settings');
 
-  // Register background service handlers (must be called before runApp).
-  // Теперь вызывается только после того, как разрешения получены или запрошены.
+  // Регистрируем фоновый сервис (до runApp).
   await configureBackgroundService();
 
-  runApp(const SleepTrackerApp());
+  // Создаём провайдеры один раз и передаём вниз.
+  final alarmProvider = AlarmSettingsProvider();
+  final audioProvider = SleepAudioProvider();
+
+  runApp(SleepTrackerApp(
+    alarmProvider: alarmProvider,
+    audioProvider: audioProvider,
+  ));
 }
 
 class SleepTrackerApp extends StatelessWidget {
-  const SleepTrackerApp({super.key});
+  final AlarmSettingsProvider alarmProvider;
+  final SleepAudioProvider    audioProvider;
+
+  const SleepTrackerApp({
+    super.key,
+    required this.alarmProvider,
+    required this.audioProvider,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -51,19 +68,22 @@ class SleepTrackerApp extends StatelessWidget {
         SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
           statusBarIconBrightness:
-          isDark ? Brightness.light : Brightness.dark,
+              isDark ? Brightness.light : Brightness.dark,
           systemNavigationBarColor:
-          isDark ? const Color(0xFF12121A) : NeumorphicColors.background,
+              isDark ? const Color(0xFF12121A) : NeumorphicColors.background,
           systemNavigationBarIconBrightness:
-          isDark ? Brightness.light : Brightness.dark,
+              isDark ? Brightness.light : Brightness.dark,
         ));
         return MaterialApp(
-          title: 'Sleep Tracker',
+          title: 'Sleep.ly',
           debugShowCheckedModeBanner: false,
           theme: NeumorphicTheme.theme,
           darkTheme: DarkVelvetTheme.theme,
           themeMode: mode,
-          home: const MainShell(),
+          home: MainShell(
+            alarmProvider: alarmProvider,
+            audioProvider: audioProvider,
+          ),
         );
       },
     );
@@ -73,7 +93,15 @@ class SleepTrackerApp extends StatelessWidget {
 // Остальной код MainShell, _NavBar и т.д. остается без изменений
 // ── Main shell with bottom nav ────────────────────────────────────────────────
 class MainShell extends StatefulWidget {
-  const MainShell({super.key});
+  final AlarmSettingsProvider alarmProvider;
+  final SleepAudioProvider    audioProvider;
+
+  const MainShell({
+    super.key,
+    required this.alarmProvider,
+    required this.audioProvider,
+  });
+
   @override
   State<MainShell> createState() => _MainShellState();
 }
@@ -81,18 +109,11 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   int _currentIndex = 0;
 
-  static const List<Widget> _pages = [
-    TrackerPage(),
-    DiscoverPage(),
-    StatisticsPage(),
-    ProfilePage(),
-  ];
-
   static const List<_NavItem> _navItems = [
-    _NavItem(icon: Icons.bedtime_outlined,      activeIcon: Icons.bedtime_rounded,      label: 'Tracker'),
-    _NavItem(icon: Icons.explore_outlined,      activeIcon: Icons.explore_rounded,      label: 'Discover'),
-    _NavItem(icon: Icons.bar_chart_outlined,    activeIcon: Icons.bar_chart_rounded,    label: 'Stats'),
-    _NavItem(icon: Icons.person_outline_rounded,activeIcon: Icons.person_rounded,       label: 'Profile'),
+    _NavItem(icon: Icons.bedtime_outlined,       activeIcon: Icons.bedtime_rounded,       label: 'Трекер'),
+    _NavItem(icon: Icons.explore_outlined,       activeIcon: Icons.explore_rounded,       label: 'Открыть'),
+    _NavItem(icon: Icons.bar_chart_outlined,     activeIcon: Icons.bar_chart_rounded,     label: 'Статистика'),
+    _NavItem(icon: Icons.person_outline_rounded, activeIcon: Icons.person_rounded,        label: 'Профиль'),
   ];
 
   void _onTap(int i) {
@@ -102,9 +123,21 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
+    // TrackerPage получает оба провайдера через конструктор.
+    // Остальные страницы используют AppColors из темы как прежде.
+    final pages = [
+      TrackerPage(
+        alarmProvider: widget.alarmProvider,
+        audioProvider: widget.audioProvider,
+      ),
+      const DiscoverPage(),
+      const StatisticsPage(),
+      const ProfilePage(),
+    ];
+
     return Scaffold(
       backgroundColor: AppColors.of(context).background,
-      body: IndexedStack(index: _currentIndex, children: _pages),
+      body: IndexedStack(index: _currentIndex, children: pages),
       bottomNavigationBar: _NavBar(
         currentIndex: _currentIndex,
         items: _navItems,
