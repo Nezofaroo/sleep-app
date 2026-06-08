@@ -1,39 +1,39 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-// ────────────────────────────────────────────────────────────────────────────
-// Color palette
-// ────────────────────────────────────────────────────────────────────────────
+
+
+
 class NeumorphicColors {
-  // Background — slightly warm off-white (neumorphism MUST NOT use pure white)
+
   static const Color background  = Color(0xFFF0F2F5);
   static const Color surface     = Color(0xFFF0F2F5);
 
-  // Neumorphic shadows
+
   static const Color shadowDark  = Color(0xFFC8CACD);
   static const Color shadowLight = Color(0xFFFFFFFF);
 
-  // Coral accent
+
   static const Color coral       = Color(0xFFFF7F50);
   static const Color coralLight  = Color(0xFFFFB08C);
   static const Color coralDark   = Color(0xFFE06030);
 
-  // Typography
+
   static const Color textPrimary   = Color(0xFF3D3D5C);
   static const Color textSecondary = Color(0xFF8E8E9A);
   static const Color textDisabled  = Color(0xFFBEBECB);
   static const Color white         = Color(0xFFFFFFFF);
 
-  // Chart / misc
+
   static const Color chartBg    = Color(0xFFE8EAF0);
   static const Color divider    = Color(0xFFDEE0E6);
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Decoration helpers
-// ────────────────────────────────────────────────────────────────────────────
 
-/// Standard raised (convex) neumorphic card
+
+
+
+
 BoxDecoration neumorphicRaised({
   double radius = 16,
   Color? color,
@@ -59,7 +59,7 @@ BoxDecoration neumorphicRaised({
   );
 }
 
-/// Pressed / inset neumorphic (concave) — used for active/pressed states
+
 BoxDecoration neumorphicPressed({double radius = 16, Color? color}) {
   final bg = color ?? NeumorphicColors.background;
   return BoxDecoration(
@@ -82,7 +82,7 @@ BoxDecoration neumorphicPressed({double radius = 16, Color? color}) {
   );
 }
 
-/// Coral filled button decoration
+
 BoxDecoration coralButtonDecoration({double radius = 50}) {
   return BoxDecoration(
     gradient: const LinearGradient(
@@ -106,7 +106,7 @@ BoxDecoration coralButtonDecoration({double radius = 50}) {
   );
 }
 
-/// Outline (ghost) coral button decoration
+
 BoxDecoration outlineCoralDecoration({double radius = 50}) {
   return BoxDecoration(
     color: NeumorphicColors.background,
@@ -127,9 +127,9 @@ BoxDecoration outlineCoralDecoration({double radius = 50}) {
   );
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// ThemeData
-// ────────────────────────────────────────────────────────────────────────────
+
+
+
 class NeumorphicTheme {
   static ThemeData get theme {
     final base = GoogleFonts.montserrat();

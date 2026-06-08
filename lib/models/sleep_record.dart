@@ -2,9 +2,9 @@ class SleepRecord {
   final int? id;
   final DateTime startTime;
   final DateTime? endTime;
-  final int? durationMinutes; // total sleep in minutes
-  final String? alarmTime; // stored as HH:mm string
-  final String? quality; // 'Poor', 'Fair', 'Good', 'Excellent'
+  final int? durationMinutes;
+  final String? alarmTime;
+  final String? quality;
   final String? notes;
 
   SleepRecord({

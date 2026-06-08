@@ -6,23 +6,23 @@ import 'package:uuid/uuid.dart';
 import '../models/sound_event.dart';
 import 'audio_cache_manager.dart';
 
-// ── VAD state machine ─────────────────────────────────────────────────────────
+
 enum _VADState { idle, monitoring, recording, cooldown }
 
 class SleepAudioTriggerService {
-  // ── Constants ────────────────────────────────────────────────────────────
+
   static const double kThresholdDb   = -35.0;
   static const Duration kPollInterval = Duration(milliseconds: 250);
   static const Duration kCooldown     = Duration(milliseconds: 1500);
   static const Duration kMinDuration  = Duration(seconds: 1);
 
-  // ── Dependencies ─────────────────────────────────────────────────────────
+
   final ServiceInstance _service;
-  // Инициализируем рекордер один раз
+
   final AudioRecorder   _recorder = AudioRecorder();
   final _uuid = const Uuid();
 
-  // ── Mutable state ─────────────────────────────────────────────────────────
+
   _VADState _state          = _VADState.idle;
   DateTime? _recordingStart;
   double    _peakAmplitude  = -160.0;
@@ -31,21 +31,21 @@ class SleepAudioTriggerService {
 
   SleepAudioTriggerService(this._service);
 
-  // ── Public API ────────────────────────────────────────────────────────────
 
-  /// ИСПРАВЛЕНО: Убрана проверка разрешений внутри фонового изолята.
+
+
   Future<bool> initialize() async {
     try {
       await AudioCacheManager.purgeOldFiles();
 
-      // На всякий случай сбрасываем состояние рекордера, если он завис
+
       if (await _recorder.isRecording()) {
         await _recorder.stop();
       }
 
-      // ВАЖНО: Мы НЕ вызываем _recorder.hasPermission() здесь.
-      // На Android 14+ в фоне это ВСЕГДА вернет false или вызовет ошибку безопасности.
-      // Мы полагаемся на то, что права получены в главном окне приложения.
+
+
+
 
       return true;
     } catch (e) {
@@ -54,13 +54,13 @@ class SleepAudioTriggerService {
     }
   }
 
-  /// Start the detection loop (transitions idle → monitoring).
+
   Future<void> startMonitoring() async {
     if (_state != _VADState.idle) return;
     await _beginListening();
   }
 
-  /// Stop everything and clean up resources.
+
   Future<void> stopAll() async {
     _cooldownTimer?.cancel();
     _cooldownTimer = null;
@@ -75,14 +75,14 @@ class SleepAudioTriggerService {
     _service.invoke('statusChanged', {'status': 'idle'});
   }
 
-  // ── Phase 1: amplitude-only monitoring ───────────────────────────────────
+
 
   Future<void> _beginListening() async {
     _state = _VADState.monitoring;
     _service.invoke('statusChanged', {'status': 'monitoring'});
 
     try {
-      // Если стрим уже идет, закрываем его перед новым запуском
+
       await _ampSub?.cancel();
 
       await _recorder.startStream(const RecordConfig(
@@ -95,14 +95,14 @@ class SleepAudioTriggerService {
           .onAmplitudeChanged(kPollInterval)
           .listen(_onAmplitude, onError: _onAmpError);
     } catch (e) {
-      // Если здесь ошибка "permission denied", значит система всё равно блокирует микрофон
+
       _service.invoke('error', {'message': 'Не удалось захватить микрофон: $e'});
       _state = _VADState.idle;
     }
   }
 
-  // Остальной код (onAmplitude, _transitionToRecording, _finishRecording и т.д.)
-  // остается без изменений, так как логика VAD верна.
+
+
 
   void _onAmplitude(Amplitude amp) {
     final db = amp.current;

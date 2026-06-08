@@ -5,7 +5,7 @@ import '../providers/alarm_settings_provider.dart';
 import '../widgets/time_drum_picker.dart';
 import '../widgets/glassmorphism_card.dart';
 
-// ── Цвета страницы ────────────────────────────────────────────────────────────
+
 class _C {
   static const bg      = Color(0xFF080C14);
   static const surface = Color(0xFF111827);
@@ -15,8 +15,8 @@ class _C {
   static const divider = Color(0xFF1E2D50);
 }
 
-/// Экран настроек будильника и времени отхода ко сну.
-/// Две вкладки переключаются PageView + нижний TabBar.
+
+
 class AlarmSettingsPage extends StatefulWidget {
   final AlarmSettingsProvider provider;
   const AlarmSettingsPage({super.key, required this.provider});
@@ -84,7 +84,7 @@ class _AlarmSettingsPageState extends State<AlarmSettingsPage>
     );
   }
 
-  // ── Шапка ─────────────────────────────────────────────────────────────────
+
   Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
@@ -102,7 +102,7 @@ class _AlarmSettingsPageState extends State<AlarmSettingsPage>
     );
   }
 
-  // ── TabBar ────────────────────────────────────────────────────────────────
+
   Widget _buildTabBar() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
@@ -138,9 +138,9 @@ class _AlarmSettingsPageState extends State<AlarmSettingsPage>
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// Вкладка А: Будильник
-// ══════════════════════════════════════════════════════════════════════════════
+
+
+
 class _AlarmTab extends StatelessWidget {
   final AlarmSettings s;
   final Future<void> Function(AlarmSettings Function(AlarmSettings)) onUpdate;
@@ -154,31 +154,31 @@ class _AlarmTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. Барабаны времени
+
           _buildTimeCard(context),
           const SizedBox(height: 16),
-          // 2. Переключатель Будильник
+
           _buildMainToggle(context),
-          // 3. Секция мелодии (видна только если будильник включён)
+
           if (s.alarmEnabled) ...[
             const SizedBox(height: 16),
             _buildRingtoneSection(context),
           ],
           const SizedBox(height: 16),
-          // 4. Умный будильник
+
           _buildSmartAlarmSection(context),
           const SizedBox(height: 16),
-          // 5. Откладывание
+
           _buildSnoozeSection(context),
           const SizedBox(height: 16),
-          // 6. Настроение
+
           _buildMoodSection(context),
         ],
       ),
     );
   }
 
-  // ── 1. Карточка с барабанами ──────────────────────────────────────────────
+
   Widget _buildTimeCard(BuildContext context) {
     return GlassCard(
       tintColor: const Color(0xFF1A2540),
@@ -197,7 +197,7 @@ class _AlarmTab extends StatelessWidget {
     );
   }
 
-  // ── 2. Основной переключатель ─────────────────────────────────────────────
+
   Widget _buildMainToggle(BuildContext context) {
     return _SettingsRow(
       icon: Icons.alarm_rounded,
@@ -210,7 +210,7 @@ class _AlarmTab extends StatelessWidget {
     );
   }
 
-  // ── 3. Секция мелодии ─────────────────────────────────────────────────────
+
   Widget _buildRingtoneSection(BuildContext context) {
     return GlassCard(
       tintColor: const Color(0xFF1A2540),
@@ -218,14 +218,14 @@ class _AlarmTab extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _sectionLabel('Мелодия будильника'),
         const SizedBox(height: 12),
-        // Список встроенных мелодий
+
         ...BuiltInRingtone.all.map((r) => _RingtoneOption(
               ringtone: r,
               selected: s.ringtone == r.id,
               onTap: () => onUpdate((s) => s.copyWith(ringtone: r.id)),
             )),
         const Divider(color: _C.divider, height: 24),
-        // Кнопка выбора своего файла
+
         GestureDetector(
           onTap: () => _pickCustomFile(context),
           child: Row(children: [
@@ -237,7 +237,7 @@ class _AlarmTab extends StatelessWidget {
           ]),
         ),
         const Divider(color: _C.divider, height: 24),
-        // Слайдер громкости
+
         Row(children: [
           const Icon(Icons.volume_down_rounded, color: _C.muted, size: 18),
           Expanded(
@@ -259,7 +259,7 @@ class _AlarmTab extends StatelessWidget {
           ),
           const Icon(Icons.volume_up_rounded, color: _C.muted, size: 18),
         ]),
-        // Переключатель вибрации
+
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -279,7 +279,7 @@ class _AlarmTab extends StatelessWidget {
   }
 
   void _pickCustomFile(BuildContext context) {
-    // Точка интеграции: file_picker или permission_handler
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         backgroundColor: _C.surface,
@@ -289,7 +289,7 @@ class _AlarmTab extends StatelessWidget {
     );
   }
 
-  // ── 4. Умный будильник ────────────────────────────────────────────────────
+
   Widget _buildSmartAlarmSection(BuildContext context) {
     return GlassCard(
       tintColor: const Color(0xFF1A2540),
@@ -307,7 +307,7 @@ class _AlarmTab extends StatelessWidget {
                         color: _C.cream,
                         fontWeight: FontWeight.w500)),
                 const SizedBox(width: 8),
-                // Иконка знака вопроса — открывает bottom sheet
+
                 GestureDetector(
                   onTap: () => _showSmartAlarmInfo(context),
                   child: Container(
@@ -332,7 +332,7 @@ class _AlarmTab extends StatelessWidget {
         ),
         if (s.smartAlarmEnabled) ...[
           const Divider(color: _C.divider, height: 20),
-          // Период просыпания
+
           GestureDetector(
             onTap: () => _showWakeWindowPicker(context),
             child: Row(
@@ -395,7 +395,7 @@ class _AlarmTab extends StatelessWidget {
     );
   }
 
-  // ── 5. Откладывание ───────────────────────────────────────────────────────
+
   Widget _buildSnoozeSection(BuildContext context) {
     return _SettingsRow(
       icon: Icons.snooze_rounded,
@@ -406,7 +406,7 @@ class _AlarmTab extends StatelessWidget {
   }
 
   void _showSnoozePicker(BuildContext context) {
-    // 0 = Выкл., затем 5–30 с шагом 5
+
     final values  = [0, 5, 10, 15, 20, 25, 30];
     final labels  = ['Выкл.', ...values.skip(1).map((v) => '$v мин.')];
     int selMinutes    = s.snoozeMinutes;
@@ -429,7 +429,7 @@ class _AlarmTab extends StatelessWidget {
               const SizedBox(height: 16),
               const Divider(color: _C.divider),
               const SizedBox(height: 8),
-              // Смарт-пробуждение внутри bottom sheet
+
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -474,7 +474,7 @@ class _AlarmTab extends StatelessWidget {
     );
   }
 
-  // ── 6. Настроение ─────────────────────────────────────────────────────────
+
   Widget _buildMoodSection(BuildContext context) {
     return _SettingsRow(
       icon: Icons.mood_rounded,
@@ -489,9 +489,9 @@ class _AlarmTab extends StatelessWidget {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// Вкладка Б: Время отхода ко сну
-// ══════════════════════════════════════════════════════════════════════════════
+
+
+
 class _BedtimeTab extends StatelessWidget {
   final AlarmSettings s;
   final Future<void> Function(AlarmSettings Function(AlarmSettings)) onUpdate;
@@ -505,13 +505,13 @@ class _BedtimeTab extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 1. Барабаны времени отхода
+
           _buildBedtimeCard(),
           const SizedBox(height: 16),
-          // 2. Напомнить лечь спать
+
           _buildReminderSection(context),
           const SizedBox(height: 16),
-          // 3. Факторы сна
+
           _buildSleepFactorsSection(context),
         ],
       ),
@@ -587,9 +587,9 @@ class _BedtimeTab extends StatelessWidget {
   }
 
   void _showReminderOffsetPicker(BuildContext context) {
-    // Два колеса: часы 0-3, минуты 0-55 шаг 5
-    final hours   = List.generate(4, (i) => i);      // 0–3
-    final minutes = List.generate(12, (i) => i * 5); // 0–55 шаг 5
+
+    final hours   = List.generate(4, (i) => i);
+    final minutes = List.generate(12, (i) => i * 5);
 
     int selH = s.reminderOffsetHours;
     int selM = s.reminderOffsetMinutes;
@@ -663,11 +663,11 @@ class _BedtimeTab extends StatelessWidget {
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// Переиспользуемые компоненты
-// ══════════════════════════════════════════════════════════════════════════════
 
-/// Строка настройки с иконкой, заголовком, подзаголовком и правым виджетом.
+
+
+
+
 class _SettingsRow extends StatelessWidget {
   final IconData icon;
   final String label;
@@ -729,7 +729,7 @@ class _SettingsRow extends StatelessWidget {
   }
 }
 
-/// Опция мелодии в списке.
+
 class _RingtoneOption extends StatelessWidget {
   final BuiltInRingtone ringtone;
   final bool selected;
@@ -774,7 +774,7 @@ class _RingtoneOption extends StatelessWidget {
   }
 }
 
-/// Bottom sheet информации (для кнопки «?»).
+
 class _InfoBottomSheet extends StatelessWidget {
   final String title;
   final String body;
@@ -828,8 +828,8 @@ class _InfoBottomSheet extends StatelessWidget {
   }
 }
 
-/// Универсальный bottom sheet с заголовком, произвольным child
-/// и кнопками «Отмена» / «Сохранить».
+
+
 class _PickerBottomSheet extends StatelessWidget {
   final String title;
   final Widget child;
@@ -856,7 +856,7 @@ class _PickerBottomSheet extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Ручка
+
           Container(
             width: 36, height: 4,
             margin: const EdgeInsets.only(bottom: 20),
@@ -913,7 +913,7 @@ class _PickerBottomSheet extends StatelessWidget {
   }
 }
 
-/// Простое колесо прокрутки для выбора одного значения из списка строк.
+
 class _WheelPicker extends StatelessWidget {
   final List<String> items;
   final int initialIndex;
@@ -954,7 +954,7 @@ class _WheelPicker extends StatelessWidget {
   }
 }
 
-// ── Хелпер заголовка секции ───────────────────────────────────────────────────
+
 Widget _sectionLabel(String text) => Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Text(text,

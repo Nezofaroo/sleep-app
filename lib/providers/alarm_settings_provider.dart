@@ -2,9 +2,9 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 import '../models/alarm_settings.dart';
 
-/// ChangeNotifier, управляющий [AlarmSettings].
-/// Персистентность — Hive box 'settings' с примитивными типами
-/// (не требует TypeAdapter).
+
+
+
 class AlarmSettingsProvider extends ChangeNotifier {
   static const _boxName = 'settings';
 
@@ -15,7 +15,7 @@ class AlarmSettingsProvider extends ChangeNotifier {
     _load();
   }
 
-  // ── Загрузка из Hive ────────────────────────────────────────────────────
+
   void _load() {
     if (!Hive.isBoxOpen(_boxName)) return;
     final b = Hive.box(_boxName);
@@ -41,7 +41,7 @@ class AlarmSettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Сохранение в Hive ────────────────────────────────────────────────────
+
   Future<void> save(AlarmSettings updated) async {
     _settings = updated;
     notifyListeners();
@@ -69,7 +69,7 @@ class AlarmSettingsProvider extends ChangeNotifier {
     ]);
   }
 
-  // ── Удобные точечные апдейты ─────────────────────────────────────────────
+
   Future<void> update(AlarmSettings Function(AlarmSettings) updater) =>
       save(updater(_settings));
 }

@@ -7,8 +7,8 @@ class DarkVelvetTheme {
       brightness: Brightness.dark,
       scaffoldBackgroundColor: const Color(0xFF12121A),
       colorScheme: const ColorScheme.dark(
-        primary: Color(0xFF4A8EC0),       // sapphire
-        secondary: Color(0xFFD4A84B),     // amber (nav active)
+        primary: Color(0xFF4A8EC0),
+        secondary: Color(0xFFD4A84B),
         surface: Color(0xFF1A1D25),
         onPrimary: Color(0xFFF5F1E9),
         onSecondary: Color(0xFF12121A),
@@ -38,7 +38,7 @@ class DarkVelvetTheme {
       ),
       bottomNavigationBarTheme: const BottomNavigationBarThemeData(
         backgroundColor: Color(0xFF12121A),
-        selectedItemColor: Color(0xFFD4A84B),   // amber
+        selectedItemColor: Color(0xFFD4A84B),
         unselectedItemColor: Color(0xFF8B97B0),
         type: BottomNavigationBarType.fixed,
         elevation: 0,
@@ -47,11 +47,11 @@ class DarkVelvetTheme {
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith((s) =>
             s.contains(WidgetState.selected)
-                ? const Color(0xFFF5F1E9)   // cream white thumb
+                ? const Color(0xFFF5F1E9)
                 : const Color(0xFF8B97B0)),
         trackColor: WidgetStateProperty.resolveWith((s) =>
             s.contains(WidgetState.selected)
-                ? const Color(0xFF4A8EC0)   // sapphire track
+                ? const Color(0xFF4A8EC0)
                 : const Color(0xFF252A38)),
       ),
       sliderTheme: SliderThemeData(

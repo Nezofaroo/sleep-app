@@ -2,25 +2,25 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class CyberpunkColors {
-  // Background layers
+
   static const Color background = Color(0xFF050A0F);
   static const Color surface = Color(0xFF0D1117);
   static const Color surfaceVariant = Color(0xFF111823);
   static const Color cardBg = Color(0xFF0A1520);
 
-  // Neon accents
+
   static const Color neonCyan = Color(0xFF00F0FF);
   static const Color neonPink = Color(0xFFFF003C);
   static const Color neonYellow = Color(0xFFFCE205);
   static const Color neonPurple = Color(0xFFBD00FF);
   static const Color neonGreen = Color(0xFF00FF9F);
 
-  // Text
+
   static const Color textPrimary = Color(0xFFE0F7FA);
   static const Color textSecondary = Color(0xFF607D8B);
   static const Color textDisabled = Color(0xFF37474F);
 
-  // Borders / glows
+
   static const Color borderCyan = Color(0xFF00F0FF);
   static const Color borderPink = Color(0xFFFF003C);
 }
@@ -135,7 +135,7 @@ class CyberpunkTheme {
   }
 }
 
-// Reusable glow box decoration
+
 BoxDecoration cyberpunkCardDecoration({
   Color borderColor = CyberpunkColors.neonCyan,
   double glowRadius = 6,
@@ -155,7 +155,7 @@ BoxDecoration cyberpunkCardDecoration({
   );
 }
 
-// Neon glow text shadow
+
 List<Shadow> neonGlow(Color color) {
   return [
     Shadow(color: color.withOpacity(0.8), blurRadius: 8),

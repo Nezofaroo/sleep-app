@@ -1,8 +1,8 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 
-/// Reusable glassmorphism card with backdrop blur.
-/// Place on top of a gradient background for the full effect.
+
+
 class GlassCard extends StatelessWidget {
   final Widget child;
   final double borderRadius;

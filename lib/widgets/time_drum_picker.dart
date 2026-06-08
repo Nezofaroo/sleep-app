@@ -1,12 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Барабанный пикер времени (часы + минуты).
-/// Реализован через [ListWheelScrollView] — нативное колёсо прокрутки.
-///
-/// [initialHour] / [initialMinute] — начальные значения.
-/// [onChanged] вызывается при каждом новом выборе.
-/// [minuteStep] — шаг минут (1, 5, 15 и т.д.).
+
+
+
+
+
+
 class TimeDrumPicker extends StatefulWidget {
   final int initialHour;
   final int initialMinute;
@@ -38,7 +38,7 @@ class _TimeDrumPickerState extends State<TimeDrumPicker> {
   void initState() {
     super.initState();
     _hour   = widget.initialHour;
-    // Находим ближайший индекс при заданном шаге
+
     final minuteItems = _minuteList();
     final minIdx = minuteItems.indexWhere((m) => m >= widget.initialMinute);
     _minute = minuteItems[minIdx < 0 ? 0 : minIdx];
@@ -68,11 +68,11 @@ class _TimeDrumPickerState extends State<TimeDrumPicker> {
     final minuteItems = _minuteList();
 
     return SizedBox(
-      height: _itemExtent * 5, // видно 5 элементов
+      height: _itemExtent * 5,
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          // ── Барабан часов ──────────────────────────────────────────────
+
           _buildDrum(
             controller: _hourCtrl,
             itemCount: 24,
@@ -83,7 +83,7 @@ class _TimeDrumPickerState extends State<TimeDrumPicker> {
             },
           ),
 
-          // ── Разделитель ────────────────────────────────────────────────
+
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Text(':',
@@ -93,7 +93,7 @@ class _TimeDrumPickerState extends State<TimeDrumPicker> {
                     color: const Color(0xFF4F6EF7))),
           ),
 
-          // ── Барабан минут ──────────────────────────────────────────────
+
           _buildDrum(
             controller: _minCtrl,
             itemCount: minuteItems.length,
@@ -118,7 +118,7 @@ class _TimeDrumPickerState extends State<TimeDrumPicker> {
       width: 72,
       child: Stack(
         children: [
-          // Фоновая полоса выделения
+
           Center(
             child: Container(
               height: _itemExtent,
@@ -161,7 +161,7 @@ class _TimeDrumPickerState extends State<TimeDrumPicker> {
               },
             ),
           ),
-          // Верхняя и нижняя маски затемнения
+
           IgnorePointer(
             child: Container(
               decoration: BoxDecoration(

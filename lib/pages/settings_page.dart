@@ -44,13 +44,13 @@ class _SettingsPageState extends State<SettingsPage> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Theme section ──────────────────────────────────────────────
+
             _sectionLabel('Appearance', c),
             const SizedBox(height: 12),
             _ThemeSelector(c: c),
             const SizedBox(height: 28),
 
-            // ── About section ─────────────────────────────────────────────
+
             _sectionLabel('About', c),
             const SizedBox(height: 12),
             Container(
@@ -104,7 +104,7 @@ class _SettingsPageState extends State<SettingsPage> {
       );
 }
 
-// ── Theme Selector widget ─────────────────────────────────────────────────────
+
 class _ThemeSelector extends StatelessWidget {
   final AppColors c;
   const _ThemeSelector({required this.c});
@@ -117,7 +117,7 @@ class _ThemeSelector extends StatelessWidget {
         final isLight = mode == ThemeMode.light;
         return Column(
           children: [
-            // Preview cards row
+
             Row(
               children: [
                 Expanded(
@@ -152,7 +152,7 @@ class _ThemeSelector extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 20),
-            // Toggle row
+
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               decoration: c.cardRaised(radius: 16),
@@ -242,7 +242,7 @@ class _ThemePreviewCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // Mini card mock
+
           Container(
             height: 48,
             decoration: BoxDecoration(
@@ -275,7 +275,7 @@ class _ThemePreviewCard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          // Accent pill mock
+
           Container(
             height: 10,
             decoration: BoxDecoration(

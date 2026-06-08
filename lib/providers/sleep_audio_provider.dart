@@ -7,11 +7,11 @@ import 'package:permission_handler/permission_handler.dart';
 import '../models/sound_event.dart';
 import '../services/background_service_init.dart';
 
-/// Possible states shown in the UI.
+
 enum MonitoringStatus { idle, monitoring, recording, error }
 
 class SleepAudioProvider extends ChangeNotifier {
-  // ── Monitoring state ──────────────────────────────────────────────────────
+
   MonitoringStatus _status   = MonitoringStatus.idle;
   String?          _errorMsg;
   final List<SoundEvent> _events = [];
@@ -23,14 +23,14 @@ class SleepAudioProvider extends ChangeNotifier {
       _status == MonitoringStatus.monitoring ||
       _status == MonitoringStatus.recording;
 
-  // ── Audio player state ────────────────────────────────────────────────────
+
   final AudioPlayer _audioPlayer = AudioPlayer();
 
-  /// ID текущего воспроизводимого события (null — ничего не играет).
+
   String? _currentlyPlayingId;
   String? get currentlyPlayingId => _currentlyPlayingId;
 
-  /// Прогресс воспроизведения: 0.0–1.0 (null если не играет).
+
   double? _playProgress;
   double? get playProgress => _playProgress;
 
@@ -39,7 +39,7 @@ class SleepAudioProvider extends ChangeNotifier {
   StreamSubscription? _durationSub;
   Duration?           _trackDuration;
 
-  // ── Background service subscriptions ─────────────────────────────────────
+
   StreamSubscription? _statusSub;
   StreamSubscription? _eventSub;
   StreamSubscription? _errorSub;
@@ -50,7 +50,7 @@ class SleepAudioProvider extends ChangeNotifier {
     _initPlayerListeners();
   }
 
-  // ── Hive load ─────────────────────────────────────────────────────────────
+
   void _loadFromHive() {
     try {
       if (Hive.isBoxOpen(kSoundEventBoxName)) {
@@ -64,9 +64,9 @@ class SleepAudioProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
-  // ── Player listeners ──────────────────────────────────────────────────────
+
   void _initPlayerListeners() {
-    // Обновляем прогресс при изменении позиции
+
     _positionSub = _audioPlayer.onPositionChanged.listen((pos) {
       if (_trackDuration != null && _trackDuration!.inMilliseconds > 0) {
         _playProgress =
@@ -75,12 +75,12 @@ class SleepAudioProvider extends ChangeNotifier {
       }
     });
 
-    // Запоминаем длительность трека
+
     _durationSub = _audioPlayer.onDurationChanged.listen((dur) {
       _trackDuration = dur;
     });
 
-    // Авто-сброс при завершении трека
+
     _completeSub = _audioPlayer.onPlayerComplete.listen((_) {
       _currentlyPlayingId = null;
       _playProgress       = null;
@@ -89,7 +89,7 @@ class SleepAudioProvider extends ChangeNotifier {
     });
   }
 
-  // ── Background service listeners ──────────────────────────────────────────
+
   void _listenToService() {
     final svc = FlutterBackgroundService();
 
@@ -126,7 +126,7 @@ class SleepAudioProvider extends ChangeNotifier {
     });
   }
 
-  // ── Public controls: monitoring ───────────────────────────────────────────
+
 
   Future<void> startMonitoring() async {
     _errorMsg = null;
@@ -152,14 +152,14 @@ class SleepAudioProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Public controls: audio playback ──────────────────────────────────────
 
-  /// Воспроизводит запись события из локального файла.
-  /// Если уже играет тот же трек — ставит на паузу/возобновляет.
-  /// Если играет другой — останавливает его и начинает новый.
+
+
+
+
   Future<void> playEvent(SoundEvent event) async {
     if (_currentlyPlayingId == event.id) {
-      // Та же запись — переключаем пауза/воспроизведение
+
       final state = _audioPlayer.state;
       if (state == PlayerState.playing) {
         await _audioPlayer.pause();
@@ -169,7 +169,7 @@ class SleepAudioProvider extends ChangeNotifier {
       return;
     }
 
-    // Другая запись — останавливаем старую и запускаем новую
+
     await _audioPlayer.stop();
     _currentlyPlayingId = event.id;
     _playProgress       = 0.0;
@@ -185,7 +185,7 @@ class SleepAudioProvider extends ChangeNotifier {
     }
   }
 
-  /// Полная остановка воспроизведения.
+
   Future<void> stopPlayback() async {
     await _audioPlayer.stop();
     _currentlyPlayingId = null;
@@ -194,15 +194,15 @@ class SleepAudioProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Возвращает true, если данный трек сейчас активно воспроизводится.
+
   bool isPlaying(String eventId) =>
       _currentlyPlayingId == eventId &&
       _audioPlayer.state == PlayerState.playing;
 
-  // ── Event management ──────────────────────────────────────────────────────
+
 
   Future<void> deleteEvent(SoundEvent event) async {
-    // Если удаляемый трек сейчас играет — останавливаем
+
     if (_currentlyPlayingId == event.id) {
       await stopPlayback();
     }
@@ -220,7 +220,7 @@ class SleepAudioProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Все записи из Hive (для секции Sound Records).
+
   List<SoundEvent> get allRecords {
     if (!Hive.isBoxOpen(kSoundEventBoxName)) return const [];
     return Hive.box<SoundEvent>(kSoundEventBoxName)

@@ -1,13 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:hive/hive.dart';
 import '../theme/app_colors.dart';
 import 'settings_page.dart';
+import 'login_page.dart';
+import '../providers/alarm_settings_provider.dart';
+import '../providers/sleep_audio_provider.dart';
 
 class ProfilePage extends StatefulWidget {
-  const ProfilePage({super.key});
+  final AlarmSettingsProvider alarmProvider;
+  final SleepAudioProvider    audioProvider;
+
+  const ProfilePage({
+    super.key,
+    required this.alarmProvider,
+    required this.audioProvider,
+  });
+
   @override
   State<ProfilePage> createState() => _ProfilePageState();
 }
+
 
 class _ProfilePageState extends State<ProfilePage> {
   bool _notifications = true;
@@ -65,10 +78,25 @@ class _ProfilePageState extends State<ProfilePage> {
                 _buildNavRow(icon: Icons.info_outline_rounded, label: 'About', c: c),
                 _buildDivider(c),
                 _buildNavRow(
-                    icon: Icons.logout_rounded,
-                    label: 'Sign Out',
-                    c: c,
-                    isDestructive: true),
+                  icon: Icons.logout_rounded,
+                  label: 'Sign Out',
+                  c: c,
+                  isDestructive: true,
+                  onTap: () async {
+                    final settingsBox = Hive.box('settings');
+                    final navigator = Navigator.of(context);
+                    await settingsBox.put('is_logged_in', false);
+                    navigator.pushAndRemoveUntil(
+                      MaterialPageRoute(
+                        builder: (_) => LoginPage(
+                          alarmProvider: widget.alarmProvider,
+                          audioProvider: widget.audioProvider,
+                        ),
+                      ),
+                      (route) => false,
+                    );
+                  },
+                ),
               ], c),
               const SizedBox(height: 12),
               Text('Sleep Tracker v1.0.0',
@@ -82,7 +110,7 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // ── Hero ──────────────────────────────────────────────────────────────────
+
   Widget _buildHero(AppColors c) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
@@ -140,10 +168,10 @@ class _ProfilePageState extends State<ProfilePage> {
             ],
           ),
           const SizedBox(height: 16),
-          Text('CYBER_SLEEPER_01',
+          Text(Hive.box('settings').get('current_user_email', defaultValue: 'user@sleep.ly'),
               style: GoogleFonts.montserrat(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w800,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
                   color: c.textPrimary)),
           const SizedBox(height: 4),
           Text('Neural Optimization Level: 7',
@@ -177,7 +205,7 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // ── XP card ───────────────────────────────────────────────────────────────
+
   Widget _buildXpCard(AppColors c) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -213,7 +241,7 @@ class _ProfilePageState extends State<ProfilePage> {
               ],
             ),
             const SizedBox(height: 14),
-            // Progress track
+
             Container(
               height: 10,
               decoration: BoxDecoration(
@@ -254,7 +282,7 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // ── Section wrapper ────────────────────────────────────────────────────────
+
   Widget _buildSection(String title, List<Widget> children, AppColors c) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
@@ -279,7 +307,7 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // ── Sleep slider ──────────────────────────────────────────────────────────
+
   Widget _buildSleepSlider(AppColors c) {
     return Padding(
       padding: const EdgeInsets.all(20),
@@ -314,7 +342,7 @@ class _ProfilePageState extends State<ProfilePage> {
             data: SliderTheme.of(context).copyWith(
               thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 9),
               overlayShape: const RoundSliderOverlayShape(overlayRadius: 18),
-              // Dark velvet: add amber glow to thumb via overlay color
+
               overlayColor: c.isDark
                   ? const Color(0xFFD4A84B).withValues(alpha: 0.20)
                   : c.accent.withValues(alpha: 0.15),
@@ -338,7 +366,7 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // ── Switch row ────────────────────────────────────────────────────────────
+
   Widget _buildSwitchRow({
     required IconData icon,
     required String label,
@@ -378,16 +406,17 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  // ── Nav row ───────────────────────────────────────────────────────────────
+
   Widget _buildNavRow({
     required IconData icon,
     required String label,
     required AppColors c,
     bool isDestructive = false,
+    VoidCallback? onTap,
   }) {
     final color = isDestructive ? const Color(0xFFE57373) : c.accent;
     return GestureDetector(
-      onTap: () {},
+      onTap: onTap ?? () {},
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         child: Row(

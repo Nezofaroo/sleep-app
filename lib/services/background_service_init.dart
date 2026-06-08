@@ -6,23 +6,23 @@ import 'package:path_provider/path_provider.dart';
 import '../models/sound_event.dart';
 import 'sleep_audio_trigger_service.dart';
 
-// ── Background isolate entry-point ────────────────────────────────────────────
+
 @pragma('vm:entry-point')
 Future<void> onBackgroundServiceStart(ServiceInstance service) async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 1. СРАЗУ закрепляем статус Foreground
+
   if (service is AndroidServiceInstance) {
-    // Устанавливаем обработчики переключения
+
     service.on('setAsForeground').listen((event) => service.setAsForegroundService());
     service.on('setAsBackground').listen((event) => service.setAsBackgroundService());
 
-    // ПРИНУДИТЕЛЬНО активируем режим перед любой работой с аудио
+
     service.setAsForegroundService();
   }
 
-  // 2. КРИТИЧЕСКАЯ ЗАДЕРЖКА (1.5 - 2 секунды)
-  // Даем Android 14 время "увидеть" Foreground статус и разрешить микрофон в фоне
+
+
   await Future.delayed(const Duration(milliseconds: 1500));
 
   final docsDir = await getApplicationDocumentsDirectory();
@@ -31,11 +31,11 @@ Future<void> onBackgroundServiceStart(ServiceInstance service) async {
   final vad = SleepAudioTriggerService(service);
 
   try {
-    // 3. Пытаемся инициализироваться
+
     final ready = await vad.initialize();
 
     if (!ready) {
-      // Если вернулось false (занято), пробуем еще раз через секунду
+
       await Future.delayed(const Duration(seconds: 1));
       final retryReady = await vad.initialize();
       if (!retryReady) {
@@ -69,7 +69,7 @@ Future<bool> onIosBackground(ServiceInstance service) async {
   return true;
 }
 
-// ── One-time configuration ───────────────────────────────────────────────────
+
 Future<void> configureBackgroundService() async {
   final svc = FlutterBackgroundService();
 
@@ -107,10 +107,10 @@ Future<void> configureBackgroundService() async {
   );
 }
 
-// ── Convenience helpers ───────────────────────────────────────────────────────
+
 Future<void> startSnoreDetectionService() async {
   final service = FlutterBackgroundService();
-  // Если сервис уже запущен, сначала пробуем его остановить, чтобы освободить микрофон
+
   if (await service.isRunning()) {
     service.invoke('stopMonitoring');
     await Future.delayed(const Duration(milliseconds: 500));

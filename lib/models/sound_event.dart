@@ -1,14 +1,14 @@
 import 'package:hive/hive.dart';
 
-// ── Hive type ID ──────────────────────────────────────────────────────────────
+
 const int kSoundEventTypeId = 10;
 const String kSoundEventBoxName = 'sound_events';
 
-// ── Sound type enum ───────────────────────────────────────────────────────────
+
 enum SoundEventType {
-  mumble, // < 2 s
-  snore,  // 2–10 s
-  talk,   // > 10 s
+  mumble,
+  snore,
+  talk,
 }
 
 extension SoundEventTypeExt on SoundEventType {
@@ -28,7 +28,7 @@ extension SoundEventTypeExt on SoundEventType {
     }
   }
 
-  /// Classify based on recording duration in seconds.
+
   static SoundEventType fromDuration(int seconds) {
     if (seconds < 2) return SoundEventType.mumble;
     if (seconds <= 10) return SoundEventType.snore;
@@ -36,14 +36,14 @@ extension SoundEventTypeExt on SoundEventType {
   }
 }
 
-// ── Data model ────────────────────────────────────────────────────────────────
+
 class SoundEvent extends HiveObject {
   String id;
   String filePath;
   DateTime startTime;
   int durationSeconds;
-  int typeIndex; // store enum index for Hive compatibility
-  double peakAmplitude; // dBFS (negative, e.g. -28.5)
+  int typeIndex;
+  double peakAmplitude;
 
   SoundEvent({
     required this.id,
@@ -62,7 +62,7 @@ class SoundEvent extends HiveObject {
   }
 }
 
-// ── Manual TypeAdapter (replaces build_runner generated code) ─────────────────
+
 class SoundEventAdapter extends TypeAdapter<SoundEvent> {
   @override
   final int typeId = kSoundEventTypeId;
@@ -90,8 +90,8 @@ class SoundEventAdapter extends TypeAdapter<SoundEvent> {
   }
 }
 
-// ── Hive initialisation helper ────────────────────────────────────────────────
-/// Call once from main() and once from the background isolate entry-point.
+
+
 Future<void> initSoundEventHive(String hivePath) async {
   Hive.init(hivePath);
   if (!Hive.isAdapterRegistered(kSoundEventTypeId)) {

@@ -8,7 +8,7 @@ import '../providers/sleep_audio_provider.dart';
 import '../widgets/glassmorphism_card.dart';
 import '../widgets/pulse_indicator.dart';
 
-// ── Colour constants ──────────────────────────────────────────────────────────
+
 class _C {
   static const bg1        = Color(0xFF060B18);
   static const grad       = Color(0xFF152040);
@@ -16,12 +16,12 @@ class _C {
   static const indigoSoft = Color(0xFF3A5BC7);
   static const cream      = Color(0xFFEAEBF2);
   static const muted      = Color(0xFF7A84A8);
-  static const snore      = Color(0xFF4B6FDB);  // indigo
-  static const talk       = Color(0xFF7C5FDB);  // violet
-  static const mumble     = Color(0xFF3FA8C7);  // teal
-  static const danger     = Color(0xFFDB5F6F);  // red
+  static const snore      = Color(0xFF4B6FDB);
+  static const talk       = Color(0xFF7C5FDB);
+  static const mumble     = Color(0xFF3FA8C7);
+  static const danger     = Color(0xFFDB5F6F);
 
-  /// Цвет по типу события
+
   static Color forType(SoundEventType t) => switch (t) {
     SoundEventType.snore  => snore,
     SoundEventType.talk   => talk,
@@ -29,7 +29,7 @@ class _C {
   };
 }
 
-/// Full-screen sleep monitor dashboard — Timeline / Sleep History / Sound Records.
+
 class SnoreDetectionPage extends StatefulWidget {
   final SleepAudioProvider provider;
   const SnoreDetectionPage({super.key, required this.provider});
@@ -41,7 +41,7 @@ class SnoreDetectionPage extends StatefulWidget {
 class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
   SleepAudioProvider get _p => widget.provider;
 
-  // ── Build ─────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
@@ -54,20 +54,20 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
             SafeArea(
               child: CustomScrollView(
                 slivers: [
-                  // ── Header ─────────────────────────────────────────────────
+
                   SliverToBoxAdapter(child: _buildHeader()),
 
-                  // ── Status card ────────────────────────────────────────────
+
                   SliverToBoxAdapter(child: _buildStatusCard()),
 
-                  // ── Control button ─────────────────────────────────────────
+
                   SliverToBoxAdapter(child: _buildControlButton()),
 
-                  // ── Error banner ───────────────────────────────────────────
+
                   if (_p.errorMsg != null)
                     SliverToBoxAdapter(child: _buildErrorBanner()),
 
-                  // ══ СЕКЦИЯ 1: Timeline ══════════════════════════════════════
+
                   SliverToBoxAdapter(child: _buildSectionHeader(
                     label: 'Timeline',
                     trailing: _p.events.isNotEmpty
@@ -96,13 +96,13 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
                       ),
                     ),
 
-                  // ══ СЕКЦИЯ 2: Sleep History ══════════════════════════════════
+
                   SliverToBoxAdapter(
                     child: _buildSectionHeader(label: 'Sleep History'),
                   ),
                   SliverToBoxAdapter(child: _buildHistorySection()),
 
-                  // ══ СЕКЦИЯ 3: Sound Records ══════════════════════════════════
+
                   SliverToBoxAdapter(
                     child: _buildSectionHeader(label: 'Sound Records'),
                   ),
@@ -118,7 +118,7 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
     );
   }
 
-  // ── Background radial gradient ────────────────────────────────────────────
+
   Widget _buildBackground() {
     return Container(
       decoration: const BoxDecoration(
@@ -131,7 +131,7 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
     );
   }
 
-  // ── App bar / header ──────────────────────────────────────────────────────
+
   Widget _buildHeader() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 8),
@@ -165,7 +165,7 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
     );
   }
 
-  // ── Listening status card ─────────────────────────────────────────────────
+
   Widget _buildStatusCard() {
     final statusText = switch (_p.status) {
       MonitoringStatus.monitoring => 'Listening…',
@@ -223,7 +223,7 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
     );
   }
 
-  // ── Start / Stop button ───────────────────────────────────────────────────
+
   Widget _buildControlButton() {
     final isActive = _p.isActive;
     return Padding(
@@ -282,7 +282,7 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
     );
   }
 
-  // ── Error banner ──────────────────────────────────────────────────────────
+
   Widget _buildErrorBanner() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
@@ -302,7 +302,7 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
     );
   }
 
-  // ── Section header (универсальный) ────────────────────────────────────────
+
   Widget _buildSectionHeader({required String label, Widget? trailing}) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 12),
@@ -317,7 +317,7 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
     );
   }
 
-  // ── Empty hint helper ─────────────────────────────────────────────────────
+
   Widget _buildEmptyHint({
     required IconData icon,
     required String label,
@@ -343,7 +343,7 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
     );
   }
 
-  // ══ СЕКЦИЯ 1: Timeline — плитки живой сессии ══════════════════════════════
+
   Widget _buildEventTile(SoundEvent event) {
     final typeColor = _C.forType(event.type);
     return Padding(
@@ -357,7 +357,7 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
           padding: const EdgeInsets.all(14),
           borderRadius: 16,
           child: Row(children: [
-            // Левый акцентный бар
+
             Container(
               width: 3, height: 44,
               decoration: BoxDecoration(
@@ -393,7 +393,7 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
     );
   }
 
-  // ══ СЕКЦИЯ 2: Sleep History — архив сессий ════════════════════════════════
+
   Widget _buildHistorySection() {
     final records = _p.allRecords;
     if (records.isEmpty) {
@@ -404,7 +404,7 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
       );
     }
 
-    // Группируем по дате (yyyy-MM-dd)
+
     final Map<String, List<SoundEvent>> grouped = {};
     for (final e in records) {
       final key = DateFormat('yyyy-MM-dd').format(e.startTime);
@@ -428,7 +428,7 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
               padding: const EdgeInsets.all(16),
               borderRadius: 16,
               child: Row(children: [
-                // Левый блок — дата
+
                 Container(
                   width: 48, height: 48,
                   decoration: BoxDecoration(
@@ -457,7 +457,7 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
                     ]),
                   ]),
                 ),
-                // Всего событий
+
                 Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                   Text('${events.length}',
                       style: GoogleFonts.montserrat(
@@ -487,7 +487,7 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
     );
   }
 
-  // ══ СЕКЦИЯ 3: Sound Records — все аудиозаписи с плеером ══════════════════
+
   Widget _buildRecordsSection() {
     final records = _p.allRecords;
     if (records.isEmpty) {
@@ -525,7 +525,7 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
             filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
             child: Container(
               decoration: BoxDecoration(
-                // Меняем цвет тинта по типу события
+
                 color: (isActive ? typeColor : const Color(0xFF1E2D50))
                     .withValues(alpha: isActive ? 0.22 : 0.55),
                 borderRadius: BorderRadius.circular(16),
@@ -539,14 +539,14 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── Основная строка ──────────────────────────────────────
+
                   Padding(
                     padding: const EdgeInsets.fromLTRB(14, 14, 14, 10),
                     child: Row(children: [
-                      // Кнопка Play/Pause
+
                       _buildPlayButton(event, typeColor, isPlaying, isActive),
                       const SizedBox(width: 14),
-                      // Инфо: тип, время, дата
+
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -570,7 +570,7 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
                           ],
                         ),
                       ),
-                      // Длительность
+
                       Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                         Text(event.formattedDuration,
                             style: GoogleFonts.montserrat(
@@ -584,7 +584,7 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
                     ]),
                   ),
 
-                  // ── Прогресс-бар (только при активном воспроизведении) ────
+
                   if (isActive)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
@@ -629,7 +629,7 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
     );
   }
 
-  /// Круглая кнопка Play/Pause с цветом по типу события.
+
   Widget _buildPlayButton(
     SoundEvent event, Color typeColor, bool isPlaying, bool isActive,
   ) {
@@ -665,7 +665,7 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
     );
   }
 
-  /// Форматирует текущую позицию воспроизведения: "0:23 / 1:05"
+
   String _formatProgress(double progress, int totalSeconds) {
     final elapsed = (progress * totalSeconds).round();
     final m = elapsed ~/ 60;
@@ -673,7 +673,7 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
     return '$m:$s';
   }
 
-  /// Красный фон для Dismissible (свайп влево → удалить)
+
   Widget _dismissBg() {
     return Container(
       alignment: Alignment.centerRight,

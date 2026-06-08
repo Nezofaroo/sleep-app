@@ -39,14 +39,14 @@ class DatabaseHelper {
     ''');
   }
 
-  // ── INSERT ──────────────────────────────────────────────────────────────────
+
   Future<int> insertSleepRecord(SleepRecord record) async {
     final db = await database;
     final map = record.toMap()..remove('id');
     return db.insert('sleep_records', map);
   }
 
-  // ── UPDATE ──────────────────────────────────────────────────────────────────
+
   Future<int> updateSleepRecord(SleepRecord record) async {
     final db = await database;
     return db.update(
@@ -57,14 +57,14 @@ class DatabaseHelper {
     );
   }
 
-  // ── GET ALL ─────────────────────────────────────────────────────────────────
+
   Future<List<SleepRecord>> getAllRecords() async {
     final db = await database;
     final maps = await db.query('sleep_records', orderBy: 'startTime DESC');
     return maps.map((m) => SleepRecord.fromMap(m)).toList();
   }
 
-  // ── GET RECENT N ────────────────────────────────────────────────────────────
+
   Future<List<SleepRecord>> getRecentRecords(int limit) async {
     final db = await database;
     final maps = await db.query(
@@ -75,7 +75,7 @@ class DatabaseHelper {
     return maps.map((m) => SleepRecord.fromMap(m)).toList();
   }
 
-  // ── GET ACTIVE SESSION (endTime IS NULL) ────────────────────────────────────
+
   Future<SleepRecord?> getActiveSession() async {
     final db = await database;
     final maps = await db.query(
@@ -88,13 +88,13 @@ class DatabaseHelper {
     return SleepRecord.fromMap(maps.first);
   }
 
-  // ── DELETE ──────────────────────────────────────────────────────────────────
+
   Future<int> deleteSleepRecord(int id) async {
     final db = await database;
     return db.delete('sleep_records', where: 'id = ?', whereArgs: [id]);
   }
 
-  // ── STATS HELPERS ───────────────────────────────────────────────────────────
+
   Future<double> averageSleepDuration() async {
     final db = await database;
     final result = await db.rawQuery(

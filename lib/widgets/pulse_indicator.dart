@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
-/// Animated concentric-ring pulse — used to show the app is actively listening.
-/// Rings scale outward and fade, creating a sonar/radar effect.
+
+
 class PulseIndicator extends StatefulWidget {
   final Color color;
   final double size;
@@ -50,10 +50,10 @@ class _PulseIndicatorState extends State<PulseIndicator>
           return Stack(
             alignment: Alignment.center,
             children: [
-              // Animated concentric rings — staggered by 1/ringCount phase.
+
               for (int i = 0; i < widget.ringCount; i++)
                 _buildRing(i / widget.ringCount),
-              // Centre solid circle.
+
               Container(
                 width: widget.size,
                 height: widget.size,

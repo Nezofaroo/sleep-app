@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 
-/// Context-aware color palette + decoration helpers.
-/// Usage in any build():  final c = AppColors.of(context);
+
+
 class AppColors {
   final bool isDark;
 
-  // ── Surfaces ──────────────────────────────────────────────────────────────
+
   final Color background;
   final Color surface;
   final Color cardBg;
@@ -13,39 +13,39 @@ class AppColors {
   final Color shadowLight;
   final Color border;
 
-  // ── Accent ────────────────────────────────────────────────────────────────
-  final Color accent;        // coral (light) / sapphire (dark)
+
+  final Color accent;
   final Color accentLight;
   final Color accentDark;
   final List<Color> accentGradient;
 
-  // ── Typography ────────────────────────────────────────────────────────────
+
   final Color textPrimary;
   final Color textSecondary;
   final Color textDisabled;
   final Color white;
 
-  // ── Misc ──────────────────────────────────────────────────────────────────
+
   final Color chartBg;
   final Color divider;
 
-  // ── Navigation ────────────────────────────────────────────────────────────
-  final Color navActive;       // coral (light) / amber (dark)
 
-  // ── Tags / badges ─────────────────────────────────────────────────────────
+  final Color navActive;
+
+
   final Color tagBg;
   final Color tagBorder;
   final Color tagText;
 
-  // ── Progress bar ──────────────────────────────────────────────────────────
+
   final Color progressBg;
   final List<Color> progressGradient;
 
-  // ── Avatar ────────────────────────────────────────────────────────────────
+
   final Color avatarRing;
   final List<Color> avatarGradient;
 
-  // ── Slider thumb glow (amber in dark) ─────────────────────────────────────
+
   final Color sliderThumbGlow;
 
   const AppColors._({
@@ -77,7 +77,7 @@ class AppColors {
     required this.sliderThumbGlow,
   });
 
-  // ── Factories ─────────────────────────────────────────────────────────────
+
   static AppColors of(BuildContext context) {
     return Theme.of(context).brightness == Brightness.dark
         ? _dark()
@@ -121,28 +121,28 @@ class AppColors {
         shadowDark: Color(0xFF090910),
         shadowLight: Color(0xFF252A38),
         border: Color(0xFF2A3248),
-        accent: Color(0xFF4A8EC0),        // sapphire
+        accent: Color(0xFF4A8EC0),
         accentLight: Color(0xFF6AA8D4),
         accentDark: Color(0xFF2A5A88),
         accentGradient: [Color(0xFF4A8EC0), Color(0xFF2A5A88)],
-        textPrimary: Color(0xFFF5F1E9),   // warm cream
+        textPrimary: Color(0xFFF5F1E9),
         textSecondary: Color(0xFF8B97B0),
         textDisabled: Color(0xFF3D4A5C),
         white: Color(0xFFFFFFFF),
         chartBg: Color(0xFF1A2535),
         divider: Color(0xFF252A38),
-        navActive: Color(0xFFD4A84B),     // warm amber
-        tagBg: Color(0xFF2E1F42),         // deep aubergine
+        navActive: Color(0xFFD4A84B),
+        tagBg: Color(0xFF2E1F42),
         tagBorder: Color(0xFF4A3558),
-        tagText: Color(0xFFC9B8E8),       // soft lavender-white
+        tagText: Color(0xFFC9B8E8),
         progressBg: Color(0xFF1A2535),
-        progressGradient: [Color(0xFF1D6A7A), Color(0xFF0F4A58)], // teal
+        progressGradient: [Color(0xFF1D6A7A), Color(0xFF0F4A58)],
         avatarRing: Color(0xFF4A8EC0),
         avatarGradient: [Color(0xFF4A8EC0), Color(0xFF2A5A88)],
-        sliderThumbGlow: Color(0x4DD4A84B), // amber glow @ 30%
+        sliderThumbGlow: Color(0x4DD4A84B),
       );
 
-  // ── Decoration helpers ────────────────────────────────────────────────────
+
 
   BoxDecoration cardRaised({double radius = 16}) {
     if (isDark) {

@@ -8,12 +8,13 @@ import 'package:permission_handler/permission_handler.dart';
 
 import 'theme/neumorphic_theme.dart';
 import 'theme/dark_velvet_theme.dart';
-// theme_notifier.dart not needed — dark mode is fixed
+
 import 'theme/app_colors.dart';
 import 'pages/tracker_page.dart';
 import 'pages/discover_page.dart';
 import 'pages/statistics_page.dart';
 import 'pages/profile_page.dart';
+import 'pages/login_page.dart';
 import 'models/sound_event.dart';
 import 'services/background_service_init.dart';
 import 'providers/alarm_settings_provider.dart';
@@ -24,25 +25,30 @@ void main() async {
 
   await initializeDateFormatting('ru_RU');
 
-  // --- БЛОК ЗАПРОСА РАЗРЕШЕНИЙ ---
-  // Запрашиваем разрешения перед инициализацией сервиса.
-  // Это предотвратит вылет на Android 13/14+.
+
+
+
   await [
     Permission.microphone,
     Permission.notification,
   ].request();
-  // -------------------------------
 
-  // Инициализируем Hive для UI-изолята (звуковые события + настройки).
+
+
   final docsDir = await getApplicationDocumentsDirectory();
   await initSoundEventHive(docsDir.path);
-  // Открываем примитивный box для настроек будильника (не требует TypeAdapter).
-  await Hive.openBox('settings');
 
-  // Регистрируем фоновый сервис (до runApp).
+  final settingsBox = await Hive.openBox('settings');
+  if (!settingsBox.containsKey('registered_users')) {
+    await settingsBox.put('registered_users', {
+      'user@sleep.ly': 'password123'
+    });
+  }
+
+
   await configureBackgroundService();
 
-  // Создаём провайдеры один раз и передаём вниз.
+
   final alarmProvider = AlarmSettingsProvider();
   final audioProvider = SleepAudioProvider();
 
@@ -64,8 +70,8 @@ class SleepTrackerApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Dark Mode — единственный и основной режим приложения.
-    // StatusBar и навигационная панель всегда настроены под тёмный фон.
+
+
     SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.light,
@@ -78,7 +84,7 @@ class SleepTrackerApp extends StatelessWidget {
       theme: NeumorphicTheme.theme,
       darkTheme: DarkVelvetTheme.theme,
       themeMode: ThemeMode.dark,
-      home: MainShell(
+      home: AuthWrapper(
         alarmProvider: alarmProvider,
         audioProvider: audioProvider,
       ),
@@ -86,8 +92,36 @@ class SleepTrackerApp extends StatelessWidget {
   }
 }
 
-// Остальной код MainShell, _NavBar и т.д. остается без изменений
-// ── Main shell with bottom nav ────────────────────────────────────────────────
+class AuthWrapper extends StatelessWidget {
+  final AlarmSettingsProvider alarmProvider;
+  final SleepAudioProvider    audioProvider;
+
+  const AuthWrapper({
+    super.key,
+    required this.alarmProvider,
+    required this.audioProvider,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isLoggedIn = Hive.box('settings').get('is_logged_in', defaultValue: false);
+    if (isLoggedIn) {
+      return MainShell(
+        alarmProvider: alarmProvider,
+        audioProvider: audioProvider,
+      );
+    } else {
+      return LoginPage(
+        alarmProvider: alarmProvider,
+        audioProvider: audioProvider,
+      );
+    }
+  }
+}
+
+
+
+
 class MainShell extends StatefulWidget {
   final AlarmSettingsProvider alarmProvider;
   final SleepAudioProvider    audioProvider;
@@ -119,8 +153,8 @@ class _MainShellState extends State<MainShell> {
 
   @override
   Widget build(BuildContext context) {
-    // TrackerPage получает оба провайдера через конструктор.
-    // Остальные страницы используют AppColors из темы как прежде.
+
+
     final pages = [
       TrackerPage(
         alarmProvider: widget.alarmProvider,
@@ -128,7 +162,10 @@ class _MainShellState extends State<MainShell> {
       ),
       const DiscoverPage(),
       const StatisticsPage(),
-      const ProfilePage(),
+      ProfilePage(
+        alarmProvider: widget.alarmProvider,
+        audioProvider: widget.audioProvider,
+      ),
     ];
 
     return Scaffold(

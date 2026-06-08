@@ -13,7 +13,7 @@ import '../widgets/pulse_indicator.dart';
 import 'alarm_settings_page.dart';
 import 'snore_detection_page.dart';
 
-// ── Цвета ─────────────────────────────────────────────────────────────────────
+
 class _C {
   static const bg      = Color(0xFF080C14);
   static const surface = Color(0xFF111827);
@@ -26,16 +26,16 @@ class _C {
   static const glass   = Color(0xFF1A2540);
 }
 
-/// Главный экран трекинга сна Sleep.ly.
-///
-/// Архитектура:
-///  - [DatabaseHelper]          → запись/чтение сессий сна (sqflite)
-///  - [AlarmSettingsProvider]   → настройки будильника (Hive)
-///  - [SleepAudioProvider]      → VAD-статус и список звуковых событий (BG service)
-///
-/// Инициализация фонового аудио-сервиса происходит внутри [SleepAudioProvider].
-/// TrackerPage только читает его состояние и подписывается на события через
-/// [ListenableBuilder].
+
+
+
+
+
+
+
+
+
+
 class TrackerPage extends StatefulWidget {
   final AlarmSettingsProvider alarmProvider;
   final SleepAudioProvider    audioProvider;
@@ -54,13 +54,13 @@ class _TrackerPageState extends State<TrackerPage>
     with TickerProviderStateMixin {
   final DatabaseHelper _db = DatabaseHelper();
 
-  // ── Сессия сна ─────────────────────────────────────────────────────────────
+
   bool         _isSleeping   = false;
   SleepRecord? _activeSession;
   Duration     _elapsed      = Duration.zero;
   Timer?       _timer;
 
-  // ── Кнопка: анимация нажатия ───────────────────────────────────────────────
+
   late final AnimationController _btnCtrl;
   late final Animation<double>   _btnScale;
 
@@ -84,7 +84,7 @@ class _TrackerPageState extends State<TrackerPage>
     super.dispose();
   }
 
-  // ── Загрузка активной сессии из БД ────────────────────────────────────────
+
   Future<void> _loadActiveSession() async {
     final s = await _db.getActiveSession();
     if (s != null && mounted) {
@@ -107,7 +107,7 @@ class _TrackerPageState extends State<TrackerPage>
     });
   }
 
-  // ── Старт / стоп сна ───────────────────────────────────────────────────────
+
   Future<void> _toggleSleep() async {
     await _btnCtrl.forward();
     await _btnCtrl.reverse();
@@ -115,7 +115,7 @@ class _TrackerPageState extends State<TrackerPage>
     if (_isSleeping) {
       _timer?.cancel();
 
-      // Останавливаем VAD-сервис фонового мониторинга
+
       await _audio.stopMonitoring();
 
       final end  = DateTime.now();
@@ -134,12 +134,12 @@ class _TrackerPageState extends State<TrackerPage>
       );
       final id = await _db.insertSleepRecord(record);
 
-      // ── ТОЧКА ИНТЕГРАЦИИ VAD ──────────────────────────────────────────────
-      // SleepAudioProvider.startMonitoring() запускает flutter_background_service,
-      // который инициализирует SleepAudioTriggerService и начинает опрос микрофона.
-      // TrackerPage реагирует на изменения через ListenableBuilder(_audio).
+
+
+
+
       await _audio.startMonitoring();
-      // ─────────────────────────────────────────────────────────────────────
+
 
       if (mounted) {
         setState(() {
@@ -152,9 +152,9 @@ class _TrackerPageState extends State<TrackerPage>
     }
   }
 
-  // ── Диалог качества сна ────────────────────────────────────────────────────
+
   void _showQualityDialog(SleepRecord record) {
-    // Если настроена оценка настроения — добавляем шаг смайликов
+
     String? quality;
     showDialog(
       context: context,
@@ -224,7 +224,7 @@ class _TrackerPageState extends State<TrackerPage>
                     ),
                   );
                 }),
-                // Опрос настроения (смайлики), если включён в настройках
+
                 if (_alarm.wakeMoodEnabled) ...[
                   const Divider(color: _C.divider, height: 24),
                   Text('Настроение',
@@ -275,7 +275,7 @@ class _TrackerPageState extends State<TrackerPage>
     );
   }
 
-  // ── Форматирование таймера ─────────────────────────────────────────────────
+
   String get _elapsedStr {
     final h = _elapsed.inHours.toString().padLeft(2, '0');
     final m = (_elapsed.inMinutes % 60).toString().padLeft(2, '0');
@@ -283,7 +283,7 @@ class _TrackerPageState extends State<TrackerPage>
     return '$h:$m:$s';
   }
 
-  // ── Навигация на настройки ─────────────────────────────────────────────────
+
   void _openAlarmSettings() {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => AlarmSettingsPage(provider: widget.alarmProvider),
@@ -299,7 +299,7 @@ class _TrackerPageState extends State<TrackerPage>
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      // Одновременно слушаем и настройки будильника, и VAD-провайдер
+
       listenable: Listenable.merge([widget.alarmProvider, _audio]),
       builder: (context, _) => Scaffold(
         backgroundColor: _C.bg,
@@ -331,7 +331,7 @@ class _TrackerPageState extends State<TrackerPage>
     );
   }
 
-  // ── Фоновый радиальный градиент ───────────────────────────────────────────
+
   Widget _buildBackground() => Container(
     decoration: const BoxDecoration(
       gradient: RadialGradient(
@@ -342,7 +342,7 @@ class _TrackerPageState extends State<TrackerPage>
     ),
   );
 
-  // ── Шапка ─────────────────────────────────────────────────────────────────
+
   Widget _buildHeader() {
     final now = DateTime.now();
     return Padding(
@@ -361,7 +361,7 @@ class _TrackerPageState extends State<TrackerPage>
                     fontWeight: FontWeight.w800,
                     color: _C.cream)),
           ]),
-          // Часы + дата
+
           _GlassChip(
             child: Text(DateFormat('HH:mm').format(now),
                 style: GoogleFonts.montserrat(
@@ -374,7 +374,7 @@ class _TrackerPageState extends State<TrackerPage>
     );
   }
 
-  // ── Карточка статуса VAD ──────────────────────────────────────────────────
+
   Widget _buildStatusCard() {
     final isActive = _audio.isActive;
     final isRec    = _audio.status == MonitoringStatus.recording;
@@ -383,7 +383,7 @@ class _TrackerPageState extends State<TrackerPage>
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
       child: _GlassCard(
         child: Row(children: [
-          // Пульсирующий индикатор — только при активном мониторинге
+
           if (isActive)
             PulseIndicator(
               color: isRec ? const Color(0xFF7C5FDB) : _C.accent,
@@ -431,7 +431,7 @@ class _TrackerPageState extends State<TrackerPage>
               ),
             ]),
           ),
-          // Кол-во событий за ночь
+
           if (_audio.events.isNotEmpty)
             _GlassChip(
               child: Text('${_audio.events.length}',
@@ -445,7 +445,7 @@ class _TrackerPageState extends State<TrackerPage>
     );
   }
 
-  // ── Таймер активной сессии ────────────────────────────────────────────────
+
   Widget _buildTimerCard() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
@@ -474,7 +474,7 @@ class _TrackerPageState extends State<TrackerPage>
     );
   }
 
-  // ── Кнопка перехода на монитор сна ───────────────────────────────────────
+
   Widget _buildMonitorCard() {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
@@ -531,7 +531,7 @@ class _TrackerPageState extends State<TrackerPage>
     );
   }
 
-  // ── Таймлайн звуковых событий ─────────────────────────────────────────────
+
   Widget _buildTimelineSection() {
     final events = _audio.events;
     if (events.isEmpty) {
@@ -584,7 +584,7 @@ class _TrackerPageState extends State<TrackerPage>
     );
   }
 
-  // ── Карточка будильника ───────────────────────────────────────────────────
+
   Widget _buildAlarmCard() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
@@ -638,7 +638,7 @@ class _TrackerPageState extends State<TrackerPage>
     );
   }
 
-  // ── Карточка времени отхода ко сну ────────────────────────────────────────
+
   Widget _buildBedtimeCard() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
@@ -680,7 +680,7 @@ class _TrackerPageState extends State<TrackerPage>
     );
   }
 
-  // ── Советы по сну (пустой стейт) ─────────────────────────────────────────
+
   Widget _buildTipsCard() {
     const tips = [
       (Icons.thermostat_outlined, '18–20°C — оптимальная температура для сна'),
@@ -719,7 +719,7 @@ class _TrackerPageState extends State<TrackerPage>
     );
   }
 
-  // ── Главная кнопка «Начать / Завершить сон» (thumb zone) ──────────────────
+
   Widget _buildSleepButton() {
     return Padding(
       padding: const EdgeInsets.fromLTRB(24, 32, 24, 0),
@@ -783,11 +783,11 @@ class _TrackerPageState extends State<TrackerPage>
   }
 }
 
-// ══════════════════════════════════════════════════════════════════════════════
-// Локальные переиспользуемые виджеты
-// ══════════════════════════════════════════════════════════════════════════════
 
-/// Glassmorphism-карточка.
+
+
+
+
 class _GlassCard extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
@@ -818,7 +818,7 @@ class _GlassCard extends StatelessWidget {
   }
 }
 
-/// Маленький стеклянный чип (для часов, бейджей).
+
 class _GlassChip extends StatelessWidget {
   final Widget child;
   final Color? color;
@@ -840,15 +840,15 @@ class _GlassChip extends StatelessWidget {
   }
 }
 
-/// Плитка события в таймлайне (храп/разговор).
+
 class _EventTile extends StatelessWidget {
   final SoundEvent event;
   const _EventTile({required this.event});
 
   static const _typeColors = {
-    0: Color(0xFF4F6EF7), // mumble
-    1: Color(0xFF4F6EF7), // snore
-    2: Color(0xFF7C5FDB), // talk
+    0: Color(0xFF4F6EF7),
+    1: Color(0xFF4F6EF7),
+    2: Color(0xFF7C5FDB),
   };
 
   @override
@@ -858,7 +858,7 @@ class _EventTile extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 5),
       child: Row(
         children: [
-          // Левый акцент-бар таймлайна
+
           Container(
             width: 3, height: 40,
             decoration: BoxDecoration(
