@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,8 +7,10 @@ import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:hive/hive.dart';
+import 'package:audioplayers/audioplayers.dart';
 import '../models/alarm_settings.dart';
 import '../providers/alarm_settings_provider.dart';
+import '../services/alarm_service.dart';
 import '../widgets/time_drum_picker.dart';
 import '../widgets/glassmorphism_card.dart';
 
@@ -147,11 +150,62 @@ class _AlarmSettingsPageState extends State<AlarmSettingsPage>
 
 
 
-class _AlarmTab extends StatelessWidget {
+class _AlarmTab extends StatefulWidget {
   final AlarmSettings s;
   final Future<void> Function(AlarmSettings Function(AlarmSettings)) onUpdate;
 
   const _AlarmTab({required this.s, required this.onUpdate});
+
+  @override
+  State<_AlarmTab> createState() => _AlarmTabState();
+}
+
+class _AlarmTabState extends State<_AlarmTab> {
+  AudioPlayer? _previewPlayer;
+  Timer? _previewTimer;
+
+  AlarmSettings get s => widget.s;
+  Future<void> Function(AlarmSettings Function(AlarmSettings)) get onUpdate => widget.onUpdate;
+
+  @override
+  void dispose() {
+    _stopPreview();
+    super.dispose();
+  }
+
+  void _stopPreview() {
+    _previewTimer?.cancel();
+    _previewTimer = null;
+    _previewPlayer?.stop();
+    _previewPlayer?.dispose();
+    _previewPlayer = null;
+  }
+
+  Future<void> _playPreview(String ringtoneId) async {
+    _stopPreview();
+
+    try {
+      final player = AudioPlayer();
+      _previewPlayer = player;
+
+      final path = await AlarmService.getRingtonePath(ringtoneId);
+      Source source;
+      if (path.startsWith('http') || path.startsWith('content://')) {
+        source = UrlSource(path);
+      } else {
+        source = DeviceFileSource(path);
+      }
+
+      await player.setVolume(s.alarmVolume);
+      await player.play(source);
+
+      _previewTimer = Timer(const Duration(seconds: 5), () {
+        _stopPreview();
+      });
+    } catch (e) {
+      print("Error playing ringtone preview: $e");
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -233,7 +287,10 @@ class _AlarmTab extends StatelessWidget {
         ...BuiltInRingtone.all.map((r) => _RingtoneOption(
               ringtone: r,
               selected: s.ringtone == r.id,
-              onTap: () => onUpdate((s) => s.copyWith(ringtone: r.id)),
+              onTap: () {
+                onUpdate((s) => s.copyWith(ringtone: r.id));
+                _playPreview(r.id);
+              },
             )),
         const Divider(color: _C.divider, height: 24),
 
@@ -270,8 +327,10 @@ class _AlarmTab extends StatelessWidget {
               ),
               child: Slider(
                 value: s.alarmVolume,
-                onChanged: (v) =>
-                    onUpdate((s) => s.copyWith(alarmVolume: v)),
+                onChanged: (v) {
+                  onUpdate((s) => s.copyWith(alarmVolume: v));
+                  _previewPlayer?.setVolume(v);
+                },
               ),
             ),
           ),
