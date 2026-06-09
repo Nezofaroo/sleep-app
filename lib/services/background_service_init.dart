@@ -58,6 +58,26 @@ Future<void> _triggerBackgroundAlarm(
   service.invoke('alarmTriggered');
 }
 
+Future<void> _showBedtimeNotification(String title, String body) async {
+  final FlutterLocalNotificationsPlugin notificationPlugin = FlutterLocalNotificationsPlugin();
+
+  const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+    'sleep_ly_bedtime',
+    'Sleep.ly Bedtime Reminders',
+    channelDescription: 'Bedtime notifications',
+    importance: Importance.high,
+    priority: Priority.high,
+    showWhen: true,
+  );
+
+  await notificationPlugin.show(
+    id: 2003,
+    title: title,
+    body: body,
+    notificationDetails: const NotificationDetails(android: androidDetails),
+  );
+}
+
 @pragma('vm:entry-point')
 Future<void> onBackgroundServiceStart(ServiceInstance service) async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -105,7 +125,9 @@ Future<void> onBackgroundServiceStart(ServiceInstance service) async {
   // Alarm Management state
   final alarmService = AlarmService();
   bool isAlarmRinging = false;
-  int lastTriggeredMin = -1;
+  DateTime? lastAlarmTriggeredTime;
+  DateTime? lastBedtimeTriggeredTime;
+  DateTime? lastPreBedtimeTriggeredTime;
 
   // Start downloading default melodies in the background
   AlarmService.downloadBaseMelodies();
@@ -155,39 +177,91 @@ Future<void> onBackgroundServiceStart(ServiceInstance service) async {
     });
   });
 
-  // Periodic alarm timer checker
+  // Periodic alarm and bedtime reminder checker
   Timer.periodic(const Duration(seconds: 5), (timer) async {
-    if (isAlarmRinging) return;
-
     final b = Hive.box('settings');
-    final bool alarmEnabled = b.get('alarmEnabled', defaultValue: false) as bool;
-    if (!alarmEnabled) return;
-
-    final int alarmHour = b.get('alarmHour', defaultValue: 7) as int;
-    final int alarmMinute = b.get('alarmMinute', defaultValue: 0) as int;
-    final String ringtone = b.get('ringtone', defaultValue: 'default') as String;
-    final double alarmVolume = (b.get('alarmVolume', defaultValue: 0.7) as num).toDouble();
-    final bool vibrate = b.get('vibrationEnabled', defaultValue: true) as bool;
-
     final now = DateTime.now();
 
-    // Check if snooze is active
-    final String? snoozeTimeStr = b.get('snoozeAlarmTime') as String?;
-    if (snoozeTimeStr != null) {
-      final snoozeTime = DateTime.parse(snoozeTimeStr);
-      if (now.isAfter(snoozeTime) || now.isAtSameMomentAs(snoozeTime)) {
-        isAlarmRinging = true;
-        await _triggerBackgroundAlarm(service, ringtone, alarmVolume, vibrate);
+    // 1. Bedtime Reminder Check
+    final bool bedtimeReminderEnabled = b.get('bedtimeReminderEnabled', defaultValue: false) as bool;
+    if (bedtimeReminderEnabled) {
+      final int bedtimeHour = b.get('bedtimeHour', defaultValue: 23) as int;
+      final int bedtimeMinute = b.get('bedtimeMinute', defaultValue: 0) as int;
+      final int reminderOffsetHours = b.get('reminderOffsetHours', defaultValue: 0) as int;
+      final int reminderOffsetMinutes = b.get('reminderOffsetMinutes', defaultValue: 30) as int;
+
+      final nowMinutes = now.hour * 60 + now.minute;
+      final targetMinutes = bedtimeHour * 60 + bedtimeMinute;
+      final totalOffsetMinutes = reminderOffsetHours * 60 + reminderOffsetMinutes;
+
+      // Check pre-bedtime reminder
+      if (totalOffsetMinutes > 0) {
+        final preMinutes = (targetMinutes - totalOffsetMinutes) % 1440;
+        if (nowMinutes == preMinutes) {
+          final lastTriggered = lastPreBedtimeTriggeredTime;
+          if (lastTriggered == null || now.difference(lastTriggered).inMinutes >= 2) {
+            lastPreBedtimeTriggeredTime = now;
+            String offsetText = '';
+            if (reminderOffsetHours > 0 && reminderOffsetMinutes > 0) {
+              offsetText = '$reminderOffsetHours ч. $reminderOffsetMinutes мин.';
+            } else if (reminderOffsetHours > 0) {
+              offsetText = '$reminderOffsetHours ч.';
+            } else {
+              offsetText = '$reminderOffsetMinutes мин.';
+            }
+            await _showBedtimeNotification(
+              'Скоро пора спать 🌙',
+              'До вашего целевого времени сна осталось $offsetText. Пора готовиться ко сну!',
+            );
+          }
+        }
       }
-    } else {
-      // Check normal alarm
-      if (now.hour == alarmHour && now.minute == alarmMinute && now.minute != lastTriggeredMin) {
-        lastTriggeredMin = now.minute;
-        isAlarmRinging = true;
-        final int defaultSnooze = b.get('snoozeMinutes', defaultValue: 10) as int;
-        await b.put('currentSnoozeMinutes', defaultSnooze);
-        
-        await _triggerBackgroundAlarm(service, ringtone, alarmVolume, vibrate);
+
+      // Check bedtime reminder
+      if (nowMinutes == targetMinutes) {
+        final lastTriggered = lastBedtimeTriggeredTime;
+        if (lastTriggered == null || now.difference(lastTriggered).inMinutes >= 2) {
+          lastBedtimeTriggeredTime = now;
+          await _showBedtimeNotification(
+            'Время спать 💤',
+            'Наступило ваше целевое время сна. Желаем вам спокойной ночи и приятных снов!',
+          );
+        }
+      }
+    }
+
+    // 2. Alarm Check
+    if (!isAlarmRinging) {
+      final bool alarmEnabled = b.get('alarmEnabled', defaultValue: false) as bool;
+      if (alarmEnabled) {
+        final int alarmHour = b.get('alarmHour', defaultValue: 7) as int;
+        final int alarmMinute = b.get('alarmMinute', defaultValue: 0) as int;
+        final String ringtone = b.get('ringtone', defaultValue: 'default') as String;
+        final double alarmVolume = (b.get('alarmVolume', defaultValue: 0.7) as num).toDouble();
+        final bool vibrate = b.get('vibrationEnabled', defaultValue: true) as bool;
+
+        // Check if snooze is active
+        final String? snoozeTimeStr = b.get('snoozeAlarmTime') as String?;
+        if (snoozeTimeStr != null) {
+          final snoozeTime = DateTime.parse(snoozeTimeStr);
+          if (now.isAfter(snoozeTime) || now.isAtSameMomentAs(snoozeTime)) {
+            isAlarmRinging = true;
+            await _triggerBackgroundAlarm(service, ringtone, alarmVolume, vibrate);
+          }
+        } else {
+          // Check normal alarm
+          if (now.hour == alarmHour && now.minute == alarmMinute) {
+            final lastTriggered = lastAlarmTriggeredTime;
+            if (lastTriggered == null || now.difference(lastTriggered).inMinutes >= 2) {
+              lastAlarmTriggeredTime = now;
+              isAlarmRinging = true;
+              final int defaultSnooze = b.get('snoozeMinutes', defaultValue: 10) as int;
+              await b.put('currentSnoozeMinutes', defaultSnooze);
+              
+              await _triggerBackgroundAlarm(service, ringtone, alarmVolume, vibrate);
+            }
+          }
+        }
       }
     }
   });
@@ -230,6 +304,15 @@ Future<void> configureBackgroundService() async {
     playSound: false, // sound played manually via audioplayers
   );
 
+  // Channel for bedtime reminders
+  const AndroidNotificationChannel bedtimeChannel = AndroidNotificationChannel(
+    'sleep_ly_bedtime',
+    'Sleep.ly Bedtime Reminders',
+    description: 'This channel is used for bedtime reminders.',
+    importance: Importance.high,
+    playSound: true,
+  );
+
   final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
@@ -242,6 +325,11 @@ Future<void> configureBackgroundService() async {
       .resolvePlatformSpecificImplementation<
           AndroidFlutterLocalNotificationsPlugin>()
       ?.createNotificationChannel(alarmChannel);
+
+  await flutterLocalNotificationsPlugin
+      .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin>()
+      ?.createNotificationChannel(bedtimeChannel);
 
   const AndroidInitializationSettings initializationSettingsAndroid =
       AndroidInitializationSettings('@mipmap/ic_launcher');
