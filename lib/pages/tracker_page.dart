@@ -3,6 +3,8 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
+import 'package:hive/hive.dart';
 import '../database/database_helper.dart';
 import '../models/sleep_record.dart';
 import '../models/alarm_settings.dart';
@@ -59,6 +61,10 @@ class _TrackerPageState extends State<TrackerPage>
   SleepRecord? _activeSession;
   Duration     _elapsed      = Duration.zero;
   Timer?       _timer;
+  bool         _isAlarmOverlayOpen = false;
+  StreamSubscription? _alarmTriggerSub;
+  StreamSubscription? _alarmStopSub;
+  StreamSubscription? _alarmSnoozeSub;
 
 
   late final AnimationController _btnCtrl;
@@ -75,13 +81,179 @@ class _TrackerPageState extends State<TrackerPage>
     _btnScale = Tween<double>(begin: 1.0, end: 0.93)
         .animate(CurvedAnimation(parent: _btnCtrl, curve: Curves.easeInOut));
     _loadActiveSession();
+
+    final backgroundSvc = FlutterBackgroundService();
+    _alarmTriggerSub = backgroundSvc.on('alarmTriggered').listen((data) {
+      if (mounted) _showAlarmRingingOverlay();
+    });
+    _alarmStopSub = backgroundSvc.on('alarmStopped').listen((data) {
+      if (mounted && _isAlarmOverlayOpen) {
+        Navigator.of(context).pop();
+        setState(() {
+          _isAlarmOverlayOpen = false;
+        });
+      }
+    });
+    _alarmSnoozeSub = backgroundSvc.on('alarmSnoozed').listen((data) {
+      if (mounted && _isAlarmOverlayOpen) {
+        Navigator.of(context).pop();
+        setState(() {
+          _isAlarmOverlayOpen = false;
+        });
+        
+        final String? snoozeTimeStr = data?['snoozeTime'] as String?;
+        if (snoozeTimeStr != null) {
+          final target = DateTime.parse(snoozeTimeStr);
+          final diffMins = target.difference(DateTime.now()).inMinutes + 1;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: _C.surface,
+              content: Text('Будильник отложен на $diffMins мин.',
+                  style: GoogleFonts.montserrat(color: _C.accent, fontSize: 12)),
+            ),
+          );
+        }
+      }
+    });
   }
 
   @override
   void dispose() {
     _timer?.cancel();
     _btnCtrl.dispose();
+    _alarmTriggerSub?.cancel();
+    _alarmStopSub?.cancel();
+    _alarmSnoozeSub?.cancel();
     super.dispose();
+  }
+
+  void _showAlarmRingingOverlay() {
+    if (_isAlarmOverlayOpen) return;
+    _isAlarmOverlayOpen = true;
+
+    final b = Hive.box('settings');
+    
+    showGeneralDialog(
+      context: context,
+      barrierDismissible: false,
+      barrierColor: Colors.black.withOpacity(0.85),
+      pageBuilder: (ctx, anim1, anim2) {
+        return StatefulBuilder(
+          builder: (context, setStateOverlay) {
+            final int defaultSnooze = b.get('snoozeMinutes', defaultValue: 10) as int;
+            final int currentSnooze = b.get('currentSnoozeMinutes', defaultValue: defaultSnooze) as int;
+            
+            return WillPopScope(
+              onWillPop: () async => false,
+              child: Scaffold(
+                backgroundColor: Colors.transparent,
+                body: SafeArea(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(24),
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: _C.accent.withOpacity(0.12),
+                            ),
+                            child: const Icon(
+                              Icons.alarm_rounded,
+                              size: 80,
+                              color: _C.accent,
+                            ),
+                          ),
+                          const SizedBox(height: 32),
+                          Text(
+                            'БУДИЛЬНИК',
+                            style: GoogleFonts.montserrat(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: _C.muted,
+                              letterSpacing: 2.0,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Пора просыпаться!',
+                            style: GoogleFonts.montserrat(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w700,
+                              color: _C.cream,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 64),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              if (currentSnooze > 0) ...[
+                                GestureDetector(
+                                  onTap: () {
+                                    FlutterBackgroundService().invoke('snoozeAlarm');
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 24, vertical: 16),
+                                    decoration: BoxDecoration(
+                                      color: _C.surface,
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(color: _C.divider),
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        const Icon(Icons.snooze_rounded, color: _C.cream, size: 20),
+                                        const SizedBox(width: 8),
+                                        Text(
+                                          'Отложить ($currentSnooze мин)',
+                                          style: GoogleFonts.montserrat(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w600,
+                                            color: _C.cream,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 20),
+                              ],
+                              GestureDetector(
+                                onTap: () {
+                                  FlutterBackgroundService().invoke('stopAlarm');
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(18),
+                                  decoration: BoxDecoration(
+                                    color: Colors.red[900],
+                                    shape: BoxShape.rectangle,
+                                    borderRadius: BorderRadius.circular(16),
+                                  ),
+                                  child: const Icon(
+                                    Icons.crop_square_rounded,
+                                    color: Colors.white,
+                                    size: 24,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    ).then((_) {
+      _isAlarmOverlayOpen = false;
+    });
   }
 
 

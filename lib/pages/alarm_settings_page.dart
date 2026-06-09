@@ -1,5 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:hive/hive.dart';
 import '../models/alarm_settings.dart';
 import '../providers/alarm_settings_provider.dart';
 import '../widgets/time_drum_picker.dart';
@@ -205,7 +211,12 @@ class _AlarmTab extends StatelessWidget {
       trailing: Switch.adaptive(
         value: s.alarmEnabled,
         activeThumbColor: _C.accent,
-        onChanged: (v) => onUpdate((s) => s.copyWith(alarmEnabled: v)),
+        onChanged: (v) {
+          onUpdate((s) => s.copyWith(alarmEnabled: v));
+          if (v) {
+            HapticFeedback.vibrate();
+          }
+        },
       ),
     );
   }
@@ -228,13 +239,20 @@ class _AlarmTab extends StatelessWidget {
 
         GestureDetector(
           onTap: () => _pickCustomFile(context),
-          child: Row(children: [
-            const Icon(Icons.upload_file_rounded, color: _C.accent, size: 20),
-            const SizedBox(width: 10),
-            Text('Загрузить свой файл',
-                style: GoogleFonts.montserrat(
-                    fontSize: 13, fontWeight: FontWeight.w600, color: _C.accent)),
-          ]),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(children: [
+                const Icon(Icons.upload_file_rounded, color: _C.accent, size: 20),
+                const SizedBox(width: 10),
+                Text('Загрузить свой файл',
+                    style: GoogleFonts.montserrat(
+                        fontSize: 13, fontWeight: FontWeight.w600, color: _C.accent)),
+              ]),
+              if (s.ringtone == 'custom')
+                const Icon(Icons.check_circle_rounded, color: _C.accent, size: 20),
+            ],
+          ),
         ),
         const Divider(color: _C.divider, height: 24),
 
@@ -269,8 +287,12 @@ class _AlarmTab extends StatelessWidget {
             Switch.adaptive(
               value: s.vibrationEnabled,
               activeThumbColor: _C.accent,
-              onChanged: (v) =>
-                  onUpdate((s) => s.copyWith(vibrationEnabled: v)),
+              onChanged: (v) {
+                onUpdate((s) => s.copyWith(vibrationEnabled: v));
+                if (v) {
+                  HapticFeedback.vibrate();
+                }
+              },
             ),
           ],
         ),
@@ -278,15 +300,91 @@ class _AlarmTab extends StatelessWidget {
     );
   }
 
-  void _pickCustomFile(BuildContext context) {
+  Future<void> _pickCustomFile(BuildContext context) async {
+    bool permissionGranted = false;
+    
+    try {
+      if (Platform.isAndroid) {
+        final audioStatus = await Permission.audio.status;
+        final storageStatus = await Permission.storage.status;
+        
+        if (audioStatus.isGranted || storageStatus.isGranted) {
+          permissionGranted = true;
+        } else {
+          final req1 = await Permission.audio.request();
+          final req2 = await Permission.storage.request();
+          if (req1.isGranted || req2.isGranted) {
+            permissionGranted = true;
+          }
+        }
+      } else {
+        permissionGranted = true;
+      }
+    } catch (e) {
+      print("AlarmSettingsPage: Permission request failed: $e");
+      permissionGranted = true;
+    }
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        backgroundColor: _C.surface,
-        content: Text('Выбор файла: интеграция с file_picker',
-            style: GoogleFonts.montserrat(color: _C.cream, fontSize: 12)),
-      ),
-    );
+    if (!permissionGranted) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: _C.surface,
+            content: Text('Для выбора файла необходимы разрешения на доступ к медиафайлам',
+                style: GoogleFonts.montserrat(color: _C.cream, fontSize: 12)),
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['mp3'],
+      );
+
+      if (result != null && result.files.single.path != null) {
+        final pickedPath = result.files.single.path!;
+        final pickedFile = File(pickedPath);
+
+        final docsDir = await getApplicationDocumentsDirectory();
+        final localPath = '${docsDir.path}/custom_alarm_ringtone.mp3';
+        final localFile = File(localPath);
+
+        if (await localFile.exists()) {
+          await localFile.delete();
+        }
+
+        await pickedFile.copy(localPath);
+
+        final box = Hive.box('settings');
+        await box.put('customRingtonePath', localPath);
+        
+        await onUpdate((s) => s.copyWith(ringtone: 'custom'));
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              backgroundColor: _C.surface,
+              content: Text('Собственная мелодия успешно загружена!',
+                  style: GoogleFonts.montserrat(color: _C.accent, fontSize: 12)),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      print("AlarmSettingsPage: Error picking file: $e");
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            backgroundColor: Colors.red[900],
+            content: Text('Ошибка при выборе файла: $e',
+                style: GoogleFonts.montserrat(color: _C.cream, fontSize: 12)),
+          ),
+        );
+      }
+    }
   }
 
 

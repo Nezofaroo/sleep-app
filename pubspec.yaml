@@ -46,6 +46,7 @@ dependencies:
   uuid: ^4.4.0
   flutter_local_notifications: ^21.0.0
   audioplayers: ^5.2.1
+  file_picker: ^8.0.0
 
 dev_dependencies:
   flutter_test:
