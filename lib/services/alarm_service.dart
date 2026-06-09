@@ -30,6 +30,7 @@ class AlarmService {
     try {
       final docsDir = await getApplicationDocumentsDirectory();
       final client = HttpClient();
+      client.badCertificateCallback = (cert, host, port) => true;
       client.connectionTimeout = const Duration(seconds: 10);
 
       for (final entry in _ringtoneUrls.entries) {
