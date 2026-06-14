@@ -9,6 +9,7 @@ import '../database/database_helper.dart';
 import '../models/sleep_record.dart';
 import '../models/sound_event.dart';
 import '../providers/sleep_audio_provider.dart';
+import '../services/groq_service.dart';
 
 
 
@@ -163,6 +164,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
   final _db = DatabaseHelper();
   List<SleepRecord> _records = [];
   bool _loading = true;
+  final List<Map<String, String>> _aiChatMessages = [];
 
 
   @override
@@ -215,6 +217,12 @@ class _StatisticsPageState extends State<StatisticsPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: _C.bg,
+      floatingActionButton: FloatingActionButton(
+        onPressed: _showAIAssistantBottomSheet,
+        backgroundColor: _C.orange,
+        shape: const CircleBorder(),
+        child: const Icon(Icons.psychology_rounded, color: _C.bg, size: 28),
+      ),
       body: SafeArea(
         child: Column(
           children: [
@@ -246,6 +254,13 @@ class _StatisticsPageState extends State<StatisticsPage> {
         _topTab_(label: 'Журнал',     index: 0),
         const SizedBox(width: 24),
         _topTab_(label: 'Статистика', index: 1),
+        const SizedBox(width: 14),
+        IconButton(
+          onPressed: _showAIAssistantBottomSheet,
+          icon: const Icon(Icons.psychology_rounded, color: _C.orange, size: 22),
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(),
+        ),
         const Spacer(),
         GestureDetector(
           onTap: () => setState(() => _showCalendar = !_showCalendar),
@@ -547,11 +562,13 @@ class _StatisticsPageState extends State<StatisticsPage> {
                     }
                     notesMap['factors'] = selected;
 
+                    Navigator.pop(ctx);
                     await DatabaseHelper().updateSleepRecord(
                       rec.copyWith(notes: jsonEncode(notesMap))
                     );
-                    Navigator.pop(ctx);
-                    setState(() {});
+                    if (mounted) {
+                      setState(() {});
+                    }
                   },
                   child: Text('Сохранить', style: GoogleFonts.montserrat(color: _C.accent)),
                 ),
@@ -613,11 +630,13 @@ class _StatisticsPageState extends State<StatisticsPage> {
                       notesMap.remove('mood');
                     }
 
+                    Navigator.pop(ctx);
                     await DatabaseHelper().updateSleepRecord(
                       rec.copyWith(notes: notesMap.isNotEmpty ? jsonEncode(notesMap) : null)
                     );
-                    Navigator.pop(ctx);
-                    setState(() {});
+                    if (mounted) {
+                      setState(() {});
+                    }
                   },
                   child: Text('Сохранить', style: GoogleFonts.montserrat(color: _C.accent)),
                 ),
@@ -1760,6 +1779,20 @@ class _StatisticsPageState extends State<StatisticsPage> {
         ]),
     ]);
   }
+
+  void _showAIAssistantBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (context) {
+        return _AIAssistantBottomSheet(
+          records: _records,
+          chatMessages: _aiChatMessages,
+        );
+      },
+    );
+  }
 }
 
 
@@ -2296,4 +2329,364 @@ class _WaveformPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _WaveformPainter old) =>
       old.progress != progress || old.color != color;
+}
+
+
+class _AIAssistantBottomSheet extends StatefulWidget {
+  final List<SleepRecord> records;
+  final List<Map<String, String>> chatMessages;
+
+  const _AIAssistantBottomSheet({
+    required this.records,
+    required this.chatMessages,
+  });
+
+  @override
+  State<_AIAssistantBottomSheet> createState() => _AIAssistantBottomSheetState();
+}
+
+class _AIAssistantBottomSheetState extends State<_AIAssistantBottomSheet> {
+  final TextEditingController _inputController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  bool _loading = false;
+  final GroqService _groqService = GroqService();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.chatMessages.isEmpty) {
+      if (widget.records.length < 3) {
+        widget.chatMessages.add({
+          'role': 'assistant',
+          'content': 'Привет! Чтобы я мог проанализировать твой сон и дать точные советы, мне нужно чуть больше данных. Пожалуйста, заполни журнал сна за несколько дней!'
+        });
+      } else {
+        widget.chatMessages.add({
+          'role': 'assistant',
+          'content': 'Привет! Я твой ИИ-эксперт по сну. Я проанализировал твои записи сна за последнее время. Задай мне любой вопрос или попроси сделать анализ!'
+        });
+      }
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToBottom());
+  }
+
+  @override
+  void dispose() {
+    _inputController.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollToBottom() {
+    if (_scrollController.hasClients) {
+      _scrollController.animateTo(
+        _scrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  String _buildUserContext() {
+    final contextList = widget.records.take(30).map((r) {
+      List<String> factors = [];
+      String? mood;
+      if (r.notes != null && r.notes!.isNotEmpty) {
+        try {
+          final Map<String, dynamic> notesMap = jsonDecode(r.notes!);
+          if (notesMap['factors'] != null) {
+            factors = List<String>.from(notesMap['factors']);
+          }
+          mood = notesMap['mood'] as String?;
+        } catch (_) {}
+      }
+      return {
+        'date': DateFormat('yyyy-MM-dd').format(r.startTime),
+        'duration_hours': r.durationMinutes != null ? (r.durationMinutes! / 60).toStringAsFixed(1) : '0',
+        'quality': r.quality ?? 'Не указано',
+        'factors': factors,
+        'mood': mood ?? 'Не указано',
+      };
+    }).toList();
+    return jsonEncode(contextList);
+  }
+
+  void _sendMessage() async {
+    final text = _inputController.text.trim();
+    if (text.isEmpty) return;
+
+    _inputController.clear();
+    setState(() {
+      widget.chatMessages.add({'role': 'user', 'content': text});
+      _loading = true;
+    });
+    _scrollToBottom();
+
+    if (widget.records.length < 3) {
+      setState(() {
+        widget.chatMessages.add({
+          'role': 'assistant',
+          'content': 'К сожалению, у меня все еще недостаточно данных для анализа. Заполните журнал хотя бы за 3 дня.'
+        });
+        _loading = false;
+      });
+      _scrollToBottom();
+      return;
+    }
+
+    final contextData = _buildUserContext();
+    final response = await _groqService.getSleepRecommendations(
+      userContextData: contextData,
+      userCustomQuestion: text,
+    );
+
+    if (mounted) {
+      setState(() {
+        widget.chatMessages.add({'role': 'assistant', 'content': response});
+        _loading = false;
+      });
+      _scrollToBottom();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.only(
+        bottom: MediaQuery.of(context).viewInsets.bottom,
+      ),
+      decoration: const BoxDecoration(
+        color: _C.bg,
+        borderRadius: BorderRadius.only(
+          topLeft: Radius.circular(24),
+          topRight: Radius.circular(24),
+        ),
+      ),
+      height: MediaQuery.of(context).size.height * 0.75,
+      child: SafeArea(
+        child: Column(
+          children: [
+            const SizedBox(height: 12),
+            Center(
+              child: Container(
+                width: 38,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: _C.border,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(Icons.psychology, color: _C.orange, size: 28),
+                      const SizedBox(width: 8),
+                      Text(
+                        'ИИ-Ассистент по сну',
+                        style: GoogleFonts.montserrat(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: _C.cream,
+                        ),
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close, color: _C.muted, size: 20),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(color: _C.border, height: 1),
+            Expanded(
+              child: ListView.builder(
+                controller: _scrollController,
+                padding: const EdgeInsets.all(20),
+                itemCount: widget.chatMessages.length,
+                itemBuilder: (context, index) {
+                  final msg = widget.chatMessages[index];
+                  final isUser = msg['role'] == 'user';
+                  return _buildMessageBubble(msg['content'] ?? '', isUser);
+                },
+              ),
+            ),
+            if (_loading) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: _C.surface,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: _C.border),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: _C.orange,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'ИИ думает...',
+                          style: GoogleFonts.montserrat(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w500,
+                            color: _C.muted,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+            if (widget.chatMessages.length == 1 && widget.records.length >= 3 && !_loading) ...[
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+                child: Row(
+                  children: [
+                    _buildSuggestionChip('Анализ сна', () {
+                      _inputController.text = 'Сделай анализ моего сна за последний месяц.';
+                      _sendMessage();
+                    }),
+                    const SizedBox(width: 10),
+                    _buildSuggestionChip('Советы для сна', () {
+                      _inputController.text = 'Дай советы по улучшению качества моего сна.';
+                      _sendMessage();
+                    }),
+                  ],
+                ),
+              ),
+            ],
+            Container(
+              padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
+              decoration: const BoxDecoration(
+                color: _C.bg,
+                border: Border(
+                  top: BorderSide(color: _C.border, width: 0.5),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: _C.surface,
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: _C.border),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: TextField(
+                        controller: _inputController,
+                        style: GoogleFonts.montserrat(
+                          fontSize: 13,
+                          color: _C.cream,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: 'Спроси о своем сне...',
+                          hintStyle: GoogleFonts.montserrat(
+                            fontSize: 13,
+                            color: _C.muted,
+                          ),
+                          border: InputBorder.none,
+                        ),
+                        onSubmitted: (_) => _sendMessage(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  GestureDetector(
+                    onTap: _sendMessage,
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: const BoxDecoration(
+                        color: _C.orange,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.send_rounded,
+                        color: _C.bg,
+                        size: 18,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMessageBubble(String content, bool isUser) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Align(
+        alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: MediaQuery.of(context).size.width * 0.75,
+          ),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: isUser ? _C.orange : _C.surface,
+            borderRadius: BorderRadius.only(
+              topLeft: const Radius.circular(16),
+              topRight: const Radius.circular(16),
+              bottomLeft: isUser ? const Radius.circular(16) : Radius.zero,
+              bottomRight: isUser ? Radius.zero : const Radius.circular(16),
+            ),
+            border: isUser ? null : Border.all(color: _C.border),
+          ),
+          child: Text(
+            content,
+            style: GoogleFonts.montserrat(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+              color: isUser ? _C.bg : _C.cream,
+              height: 1.4,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSuggestionChip(String label, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: _C.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: _C.border),
+        ),
+        child: Text(
+          label,
+          style: GoogleFonts.montserrat(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: _C.orange,
+          ),
+        ),
+      ),
+    );
+  }
 }

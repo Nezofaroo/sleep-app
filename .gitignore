@@ -19,3 +19,6 @@ local.properties
 # OS
 Thumbs.db
 .DS_Store
+
+# Local keys/configs
+config.json
