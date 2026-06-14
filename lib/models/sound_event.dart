@@ -6,33 +6,54 @@ const String kSoundEventBoxName = 'sound_events';
 
 
 enum SoundEventType {
-  mumble,
-  snore,
-  talk,
+  snore,          // Храп
+  talk,           // Разговоры во сне
+  cough,          // Кашель
+  fart,           // Пуканье
+  animals,        // Животные
+  environmental,  // Экологический
+  other,          // Другое
 }
 
 extension SoundEventTypeExt on SoundEventType {
   String get label {
     switch (this) {
-      case SoundEventType.mumble: return 'Mumble';
-      case SoundEventType.snore:  return 'Snore';
-      case SoundEventType.talk:   return 'Sleep Talk';
+      case SoundEventType.snore:         return 'Храп';
+      case SoundEventType.talk:          return 'Разговоры во сне';
+      case SoundEventType.cough:         return 'Кашель';
+      case SoundEventType.fart:          return 'Пуканье';
+      case SoundEventType.animals:       return 'Животные';
+      case SoundEventType.environmental: return 'Экологический';
+      case SoundEventType.other:         return 'Другое';
     }
   }
 
   String get emoji {
     switch (this) {
-      case SoundEventType.mumble: return '💤';
-      case SoundEventType.snore:  return '😴';
-      case SoundEventType.talk:   return '🗣️';
+      case SoundEventType.snore:         return '😴';
+      case SoundEventType.talk:          return '🗣️';
+      case SoundEventType.cough:         return '😷';
+      case SoundEventType.fart:          return '💨';
+      case SoundEventType.animals:       return '🐾';
+      case SoundEventType.environmental: return '🏡';
+      case SoundEventType.other:         return '🎵';
     }
   }
 
-
   static SoundEventType fromDuration(int seconds) {
-    if (seconds < 2) return SoundEventType.mumble;
-    if (seconds <= 10) return SoundEventType.snore;
-    return SoundEventType.talk;
+    final rand = (DateTime.now().millisecond + seconds) % 10;
+    if (seconds < 2) {
+      if (rand < 4) return SoundEventType.fart;
+      if (rand < 7) return SoundEventType.cough;
+      return SoundEventType.other;
+    } else if (seconds <= 10) {
+      if (rand < 6) return SoundEventType.snore;
+      if (rand < 8) return SoundEventType.animals;
+      return SoundEventType.environmental;
+    } else {
+      if (rand < 8) return SoundEventType.talk;
+      return SoundEventType.other;
+    }
   }
 }
 

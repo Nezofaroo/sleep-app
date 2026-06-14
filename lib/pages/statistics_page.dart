@@ -1,10 +1,14 @@
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:hive/hive.dart';
 import '../database/database_helper.dart';
 import '../models/sleep_record.dart';
+import '../models/sound_event.dart';
+import '../providers/sleep_audio_provider.dart';
 
 
 
@@ -59,12 +63,7 @@ class _Phase {
   const _Phase(this.t, this.p);
 }
 
-class _AudioItem {
-  final String      id, time;
-  final int         durSec, type;
-  final List<double> wave;
-  const _AudioItem(this.id, this.time, this.durSec, this.type, this.wave);
-}
+// Removed _AudioItem
 
 class _PhaseInfo {
   final String label, percent, duration;
@@ -94,37 +93,7 @@ const _kPhaseInfos = [
   _PhaseInfo('Бодрствование', '14%', '1 ч. 28 мин', _C.phaseWake,  0.14),
 ];
 
-List<double> _wave(int seed) {
-  final r = math.Random(seed);
-  return List.generate(44, (_) => 0.15 + r.nextDouble() * 0.85);
-}
-
-final _kSnore = [
-  _AudioItem('s1', '01:52', 14, 0, _wave(1)),
-  _AudioItem('s2', '02:14', 22, 0, _wave(2)),
-  _AudioItem('s3', '03:07',  8, 0, _wave(3)),
-  _AudioItem('s4', '04:33', 31, 0, _wave(4)),
-  _AudioItem('s5', '06:11', 11, 0, _wave(5)),
-  _AudioItem('s6', '09:45', 19, 0, _wave(6)),
-];
-
-final _kTalk = [
-  _AudioItem('t1',  '01:22',  5, 1, _wave(11)),
-  _AudioItem('t2',  '02:40',  8, 1, _wave(12)),
-  _AudioItem('t3',  '03:15',  3, 1, _wave(13)),
-  _AudioItem('t4',  '04:01', 12, 1, _wave(14)),
-  _AudioItem('t5',  '04:50',  6, 1, _wave(15)),
-  _AudioItem('t6',  '05:30',  9, 1, _wave(16)),
-  _AudioItem('t7',  '06:22',  4, 1, _wave(17)),
-  _AudioItem('t8',  '07:05',  7, 1, _wave(18)),
-  _AudioItem('t9',  '07:44', 11, 1, _wave(19)),
-  _AudioItem('t10', '08:20',  5, 1, _wave(20)),
-  _AudioItem('t11', '09:00',  8, 1, _wave(21)),
-  _AudioItem('t12', '09:33',  3, 1, _wave(22)),
-  _AudioItem('t13', '10:10',  6, 1, _wave(23)),
-  _AudioItem('t14', '10:51',  9, 1, _wave(24)),
-  _AudioItem('t15', '11:20',  4, 1, _wave(25)),
-];
+// Removed mock audio data lists
 
 
 
@@ -163,7 +132,8 @@ String _fmtDuration(int minutes) {
 
 
 class StatisticsPage extends StatefulWidget {
-  const StatisticsPage({super.key});
+  final SleepAudioProvider audioProvider;
+  const StatisticsPage({super.key, required this.audioProvider});
 
   @override
   State<StatisticsPage> createState() => _StatisticsPageState();
@@ -183,9 +153,11 @@ class _StatisticsPageState extends State<StatisticsPage> {
   int      _bedtimeTab    = 0;
 
 
-  int  _fragmentTab      = 0;
-  bool _fragmentExpanded = true;
-  String? _playingId;
+  SoundEventType? _selectedCategoryFilter;
+  final Set<SoundEventType> _expandedCategories = {
+    SoundEventType.snore,
+    SoundEventType.talk
+  };
 
 
   final _db = DatabaseHelper();
@@ -329,6 +301,18 @@ class _StatisticsPageState extends State<StatisticsPage> {
 
   Widget _buildJournal() {
     final rec = _recordForDate(_selectedDate);
+
+    final allEvents = widget.audioProvider.allRecords;
+    final dayEvents = allEvents.where((e) {
+      if (rec != null) {
+        final start = rec.startTime;
+        final end = rec.endTime ?? start.add(const Duration(hours: 12));
+        return !e.startTime.isBefore(start) && !e.startTime.isAfter(end);
+      } else {
+        return DateUtils.dateOnly(e.startTime) == _selectedDate;
+      }
+    }).toList();
+
     return CustomScrollView(
       slivers: [
         SliverToBoxAdapter(child: _buildWeekStrip()),
@@ -338,13 +322,312 @@ class _StatisticsPageState extends State<StatisticsPage> {
         SliverToBoxAdapter(child: _buildStageSectionHeader()),
         SliverToBoxAdapter(child: _buildStageGraph()),
         SliverToBoxAdapter(child: _buildPhaseGrid()),
-        SliverToBoxAdapter(child: _buildSummaryTiles(rec)),
-        SliverToBoxAdapter(child: _buildFragmentSection()),
+        SliverToBoxAdapter(child: _buildSummaryTiles(rec, dayEvents)),
+        SliverToBoxAdapter(child: _buildNotesSection(rec)),
+        SliverToBoxAdapter(child: _buildFragmentSection(dayEvents)),
         const SliverToBoxAdapter(child: SizedBox(height: 40)),
       ],
     );
   }
 
+
+  Widget _buildNotesSection(SleepRecord? rec) {
+    if (rec == null) return const SizedBox.shrink();
+
+    List<String> factors = [];
+    String? mood;
+    if (rec.notes != null && rec.notes!.isNotEmpty) {
+      try {
+        final Map<String, dynamic> notesMap = jsonDecode(rec.notes!);
+        if (notesMap['factors'] != null) {
+          factors = List<String>.from(notesMap['factors']);
+        }
+        mood = notesMap['mood'] as String?;
+      } catch (_) {}
+    }
+
+    String moodLabel = 'Нейтрально';
+    if (mood != null) {
+      moodLabel = switch (mood) {
+        '😴' => 'Очень плохо',
+        '😕' => 'Плохо',
+        '😐' => 'Нейтрально',
+        '🙂' => 'Хорошо',
+        '😄' => 'Отлично',
+        _    => 'Нейтрально',
+      };
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Заметки',
+              style: GoogleFonts.montserrat(
+                  fontSize: 16, fontWeight: FontWeight.w700, color: _C.cream)),
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: _C.surface,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _C.border),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Заметки о сне',
+                        style: GoogleFonts.montserrat(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: _C.muted)),
+                    GestureDetector(
+                      onTap: () => _editRecordFactors(rec, factors),
+                      child: const Icon(Icons.edit_outlined, size: 16, color: _C.accent),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                if (factors.isEmpty)
+                  Text('Нет заметок о факторах сна',
+                      style: GoogleFonts.montserrat(
+                          fontSize: 12,
+                          color: _C.muted.withValues(alpha: 0.7)))
+                else
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: factors.map((f) => Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: _C.accent.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(color: _C.accent.withValues(alpha: 0.5)),
+                      ),
+                      child: Text(f,
+                          style: GoogleFonts.montserrat(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: _C.accent)),
+                    )).toList(),
+                  ),
+                const Divider(color: _C.border, height: 24),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text('Настроение во время просыпания',
+                        style: GoogleFonts.montserrat(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: _C.muted)),
+                    GestureDetector(
+                      onTap: () => _editRecordMood(rec, mood),
+                      child: const Icon(Icons.edit_outlined, size: 16, color: _C.accent),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                if (mood == null)
+                  Text('Не указано',
+                      style: GoogleFonts.montserrat(
+                          fontSize: 12,
+                          color: _C.muted.withValues(alpha: 0.7)))
+                else
+                  Row(
+                    children: [
+                      Text(moodLabel,
+                          style: GoogleFonts.montserrat(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: _C.cream)),
+                      const SizedBox(width: 6),
+                      Text(mood, style: const TextStyle(fontSize: 18)),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _editRecordFactors(SleepRecord rec, List<String> currentFactors) {
+    final settings = Hive.box('settings');
+    final List<String> allFactors = List<String>.from(
+      settings.get('sleepFactorsList', defaultValue: [
+        'Боль',
+        'Легкий сон',
+        'Медитация',
+        'Болезнь',
+        'Плотный прием пищи',
+        'Теплая ванна',
+        'Таблетка снотворного',
+        'Алкоголь',
+        'Тренировка',
+        'Растяжка',
+        'Поздний прием пищи',
+        'Состояние стресса',
+        'Кофе'
+      ])
+    );
+
+    List<String> selected = List<String>.from(currentFactors);
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setS) {
+            return AlertDialog(
+              backgroundColor: _C.surface,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  side: BorderSide(color: _C.border)),
+              title: Text('Факторы сна',
+                  style: GoogleFonts.montserrat(
+                      color: _C.cream, fontWeight: FontWeight.w700, fontSize: 16)),
+              content: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 300),
+                child: SingleChildScrollView(
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: allFactors.map((factor) {
+                      final isSel = selected.contains(factor);
+                      return GestureDetector(
+                        onTap: () {
+                          setS(() {
+                            if (isSel) {
+                              selected.remove(factor);
+                            } else {
+                              selected.add(factor);
+                            }
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: isSel ? _C.accent.withValues(alpha: 0.15) : Colors.transparent,
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isSel ? _C.accent : _C.border,
+                            ),
+                          ),
+                          child: Text(
+                            factor,
+                            style: GoogleFonts.montserrat(
+                              fontSize: 12,
+                              fontWeight: isSel ? FontWeight.w600 : FontWeight.w400,
+                              color: isSel ? _C.accent : _C.muted,
+                            ),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text('Отмена', style: GoogleFonts.montserrat(color: _C.muted)),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    Map<String, dynamic> notesMap = {};
+                    if (rec.notes != null && rec.notes!.isNotEmpty) {
+                      try {
+                        notesMap = Map<String, dynamic>.from(jsonDecode(rec.notes!));
+                      } catch (_) {}
+                    }
+                    notesMap['factors'] = selected;
+
+                    await DatabaseHelper().updateSleepRecord(
+                      rec.copyWith(notes: jsonEncode(notesMap))
+                    );
+                    Navigator.pop(ctx);
+                    setState(() {});
+                  },
+                  child: Text('Сохранить', style: GoogleFonts.montserrat(color: _C.accent)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _editRecordMood(SleepRecord rec, String? currentMood) {
+    String? selected = currentMood;
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setS) {
+            return AlertDialog(
+              backgroundColor: _C.surface,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  side: BorderSide(color: _C.border)),
+              title: Text('Настроение при пробуждении',
+                  style: GoogleFonts.montserrat(
+                      color: _C.cream, fontWeight: FontWeight.w700, fontSize: 16)),
+              content: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: ['😴', '😕', '😐', '🙂', '😄'].map((e) =>
+                  GestureDetector(
+                    onTap: () => setS(() => selected = e),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 150),
+                      padding: const EdgeInsets.all(4),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: selected == e ? _C.accent.withValues(alpha: 0.15) : Colors.transparent,
+                      ),
+                      child: Text(e, style: const TextStyle(fontSize: 32)),
+                    ),
+                  )).toList(),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text('Отмена', style: GoogleFonts.montserrat(color: _C.muted)),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    Map<String, dynamic> notesMap = {};
+                    if (rec.notes != null && rec.notes!.isNotEmpty) {
+                      try {
+                        notesMap = Map<String, dynamic>.from(jsonDecode(rec.notes!));
+                      } catch (_) {}
+                    }
+                    if (selected != null) {
+                      notesMap['mood'] = selected;
+                    } else {
+                      notesMap.remove('mood');
+                    }
+
+                    await DatabaseHelper().updateSleepRecord(
+                      rec.copyWith(notes: notesMap.isNotEmpty ? jsonEncode(notesMap) : null)
+                    );
+                    Navigator.pop(ctx);
+                    setState(() {});
+                  },
+                  child: Text('Сохранить', style: GoogleFonts.montserrat(color: _C.accent)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
 
   Widget _buildWeekStrip() {
     return Container(
@@ -641,7 +924,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
   }
 
 
-  Widget _buildSummaryTiles(SleepRecord? rec) {
+  Widget _buildSummaryTiles(SleepRecord? rec, List<SoundEvent> dayEvents) {
     final inBedStr   = rec?.endTime != null
         ? _fmtDuration(rec!.endTime!.difference(rec.startTime).inMinutes)
         : '—';
@@ -651,6 +934,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
     final asleepStr  = rec != null
         ? DateFormat('hh:mm a').format(rec.startTime)
         : '—';
+    final noiseCount = dayEvents.length;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
@@ -685,7 +969,7 @@ class _StatisticsPageState extends State<StatisticsPage> {
             icon: Icons.graphic_eq_rounded,
             iconColor: _C.phaseDeep,
             title: 'Шум',
-            value: '${_kSnore.length} эпизодов',
+            value: '$noiseCount эпизодов',
           )),
         ]),
         const SizedBox(height: 12),
@@ -694,159 +978,302 @@ class _StatisticsPageState extends State<StatisticsPage> {
     );
   }
 
-
-  Widget _buildFragmentSection() {
-    final items = _fragmentTab == 0 ? _kSnore : _kTalk;
-    final tabLabels = [
-      'Храп (${_kSnore.length})',
-      'Разговоров во сне (${_kTalk.length})',
-    ];
-
+  Widget _buildEmptyState() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: List.generate(tabLabels.length, (i) {
-              final active = _fragmentTab == i;
-              return Padding(
-                padding: EdgeInsets.only(right: i < tabLabels.length - 1 ? 8 : 0),
-                child: GestureDetector(
-                  onTap: () => setState(() => _fragmentTab = i),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-                    decoration: BoxDecoration(
-                      color: active ? _C.accent : _C.surface,
-                      borderRadius: BorderRadius.circular(24),
-                      border: Border.all(
-                          color: active ? _C.accent : _C.border),
-                    ),
-                    child: Text(tabLabels[i],
-                        style: GoogleFonts.montserrat(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: active ? Colors.white : _C.muted)),
-                  ),
-                ),
-              );
-            }),
-          ),
-        ),
-        const SizedBox(height: 10),
-
-
-        GestureDetector(
-          onTap: () => setState(() => _fragmentExpanded = !_fragmentExpanded),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: BoxDecoration(
-              color: _C.surface,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _C.border),
-            ),
-            child: Row(children: [
-              Text(
-                _fragmentTab == 0
-                    ? '😪 Храп (${_kSnore.length})'
-                    : '💬 Разговоры во сне (${_kTalk.length})',
-                style: GoogleFonts.montserrat(
-                    fontSize: 14, fontWeight: FontWeight.w700, color: _C.cream),
-              ),
-              const Spacer(),
-              Icon(
-                _fragmentExpanded
-                    ? Icons.keyboard_arrow_up_rounded
-                    : Icons.keyboard_arrow_down_rounded,
+      padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 16),
+      child: Center(
+        child: Column(
+          children: [
+            Icon(Icons.graphic_eq_rounded, size: 36, color: _C.muted.withValues(alpha: 0.4)),
+            const SizedBox(height: 8),
+            Text(
+              'Нет фрагментов за этот день',
+              style: GoogleFonts.montserrat(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
                 color: _C.muted,
               ),
-            ]),
-          ),
+            ),
+          ],
         ),
-
-
-        if (_fragmentExpanded) ...[
-          const SizedBox(height: 4),
-          ...items.map(_buildAudioTile),
-        ],
-      ]),
+      ),
     );
   }
 
-  Widget _buildAudioTile(_AudioItem item) {
-    final isPlaying = _playingId == item.id;
-    return Container(
-      margin: const EdgeInsets.only(top: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: _C.surface2,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _C.border),
-      ),
-      child: Row(children: [
+  List<double> _generateDeterministicWaveform(String id) {
+    final seed = id.hashCode;
+    final r = math.Random(seed);
+    return List.generate(40, (_) => 0.15 + r.nextDouble() * 0.85);
+  }
 
-        GestureDetector(
-          onTap: () => setState(() =>
-              _playingId = isPlaying ? null : item.id),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            width: 32, height: 32,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: isPlaying
-                  ? _C.accent.withValues(alpha: 0.25)
-                  : _C.accent.withValues(alpha: 0.12),
-              border: Border.all(
-                  color: _C.accent.withValues(alpha: isPlaying ? 0.8 : 0.4)),
-              boxShadow: isPlaying
-                  ? [BoxShadow(
-                      color: _C.accent.withValues(alpha: 0.3),
-                      blurRadius: 8)]
-                  : null,
-            ),
-            child: Icon(
-              isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-              color: _C.accent,
-              size: 18,
-            ),
+  Widget _buildFragmentSection(List<SoundEvent> dayEvents) {
+    return ListenableBuilder(
+      listenable: widget.audioProvider,
+      builder: (context, _) {
+        final Map<SoundEventType, List<SoundEvent>> grouped = {};
+        for (final e in dayEvents) {
+          grouped.putIfAbsent(e.type, () => []).add(e);
+        }
+
+        for (final key in grouped.keys) {
+          grouped[key]!.sort((a, b) => a.startTime.compareTo(b.startTime));
+        }
+
+        final totalEvents = dayEvents.length;
+        final categories = SoundEventType.values;
+
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    'Фрагменты',
+                    style: GoogleFonts.montserrat(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                      color: _C.cream,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: _C.accent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(
+                        color: _C.accent.withValues(alpha: 0.4),
+                        width: 0.8,
+                      ),
+                    ),
+                    child: Text(
+                      '$totalEvents',
+                      style: GoogleFonts.montserrat(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: _C.accent,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+
+              SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: categories.map((type) {
+                    final active = _selectedCategoryFilter == type;
+                    final count = grouped[type]?.length ?? 0;
+                    final label = count > 0 ? '${type.label} ($count)' : type.label;
+
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() {
+                            _selectedCategoryFilter = active ? null : type;
+                          });
+                        },
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 180),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
+                          decoration: BoxDecoration(
+                            color: active ? _C.accent : _C.surface,
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(
+                              color: active ? _C.accent : _C.border,
+                            ),
+                          ),
+                          child: Text(
+                            label,
+                            style: GoogleFonts.montserrat(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: active ? Colors.white : _C.muted,
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              if (totalEvents == 0)
+                _buildEmptyState()
+              else
+                ...categories.map((type) {
+                  if (_selectedCategoryFilter != null && _selectedCategoryFilter != type) {
+                    return const SizedBox.shrink();
+                  }
+
+                  final events = grouped[type] ?? [];
+                  if (_selectedCategoryFilter == null && events.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+
+                  final count = events.length;
+                  final isExpanded = _expandedCategories.contains(type);
+
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: _C.surface,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: _C.border),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              setState(() {
+                                if (isExpanded) {
+                                  _expandedCategories.remove(type);
+                                } else {
+                                  _expandedCategories.add(type);
+                                }
+                              });
+                            },
+                            child: Padding(
+                              padding: const EdgeInsets.all(16),
+                              child: Row(
+                                children: [
+                                  Text(
+                                    '${type.emoji} ${type.label}',
+                                    style: GoogleFonts.montserrat(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      color: _C.cream,
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  if (count > 0)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                      decoration: BoxDecoration(
+                                        color: _C.muted.withValues(alpha: 0.15),
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        '$count',
+                                        style: GoogleFonts.montserrat(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w700,
+                                          color: _C.muted,
+                                        ),
+                                      ),
+                                    ),
+                                  const SizedBox(width: 8),
+                                  Icon(
+                                    isExpanded
+                                        ? Icons.keyboard_arrow_up_rounded
+                                        : Icons.keyboard_arrow_down_rounded,
+                                    color: _C.muted,
+                                    size: 20,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          if (isExpanded) ...[
+                            const Divider(color: _C.border, height: 1),
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              child: events.isEmpty
+                                  ? Padding(
+                                      padding: const EdgeInsets.symmetric(vertical: 16),
+                                      child: Center(
+                                        child: Text(
+                                          'Нет фрагментов этого типа',
+                                          style: GoogleFonts.montserrat(
+                                            fontSize: 12,
+                                            color: _C.muted,
+                                          ),
+                                        ),
+                                      ),
+                                    )
+                                  : Column(
+                                      children: events.map((e) => _buildFragmentTile(e)).toList(),
+                                    ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  );
+                }),
+            ],
           ),
-        ),
-        const SizedBox(width: 10),
+        );
+      },
+    );
+  }
 
+  Widget _buildFragmentTile(SoundEvent event) {
+    final isPlaying = widget.audioProvider.isPlaying(event.id);
+    final isActive = widget.audioProvider.currentlyPlayingId == event.id;
+    final progress = isActive ? (widget.audioProvider.playProgress ?? 0.0) : 0.0;
+    final typeColor = _C.accent;
 
-        Text(item.time,
-            style: GoogleFonts.montserrat(
-                fontSize: 12, fontWeight: FontWeight.w600, color: _C.cream)),
-        const SizedBox(width: 10),
-
-
-        Expanded(
-          child: SizedBox(
-            height: 30,
-            child: CustomPaint(
-              painter: _WaveformPainter(
-                values: item.wave,
-                color: _C.accent,
-                progress: isPlaying ? 0.35 : 0.0,
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        child: Row(
+          children: [
+            GestureDetector(
+              onTap: () => widget.audioProvider.playEvent(event),
+              child: Icon(
+                isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                color: _C.cream,
+                size: 22,
               ),
             ),
-          ),
+            const SizedBox(width: 10),
+            Text(
+              DateFormat('HH:mm').format(event.startTime),
+              style: GoogleFonts.montserrat(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: _C.cream,
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: SizedBox(
+                height: 24,
+                child: CustomPaint(
+                  painter: _WaveformPainter(
+                    values: _generateDeterministicWaveform(event.id),
+                    color: typeColor,
+                    progress: progress,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            GestureDetector(
+              onTap: () => _showFragmentMenu(event),
+              child: const Icon(
+                Icons.more_vert_rounded,
+                color: _C.muted,
+                size: 20,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 10),
-
-
-        GestureDetector(
-          onTap: () => _showAudioMenu(item),
-          child: const Icon(Icons.more_horiz_rounded,
-              color: _C.muted, size: 20),
-        ),
-      ]),
+      ),
     );
   }
 
-  void _showAudioMenu(_AudioItem item) {
+  void _showFragmentMenu(SoundEvent event) {
     showModalBottomSheet(
       context: context,
       backgroundColor: _C.surface,
@@ -861,7 +1288,10 @@ class _StatisticsPageState extends State<StatisticsPage> {
                   borderRadius: BorderRadius.circular(2))),
           const SizedBox(height: 16),
           _sheetItem(Icons.delete_outline_rounded, 'Удалить',
-              const Color(0xFFDB5F6F), () => Navigator.pop(context)),
+              const Color(0xFFDB5F6F), () async {
+            Navigator.pop(context);
+            _confirmDeleteFragment(event);
+          }),
           _sheetItem(Icons.share_rounded, 'Поделиться', _C.cream,
               () => Navigator.pop(context)),
           _sheetItem(Icons.note_add_outlined, 'Добавить заметку', _C.cream,
@@ -869,6 +1299,43 @@ class _StatisticsPageState extends State<StatisticsPage> {
           const SizedBox(height: 8),
         ]),
       ),
+    );
+  }
+
+  void _confirmDeleteFragment(SoundEvent event) {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: _C.bg,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+              side: BorderSide(color: _C.border)),
+          title: Text(
+            'Удалить фрагмент?',
+            style: GoogleFonts.montserrat(
+                color: _C.cream, fontWeight: FontWeight.w700, fontSize: 16),
+          ),
+          content: Text(
+            'Вы уверены, что хотите удалить эту запись?',
+            style: GoogleFonts.montserrat(color: _C.muted, fontSize: 13),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Отмена', style: GoogleFonts.montserrat(color: _C.muted)),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await widget.audioProvider.deleteEvent(event);
+                setState(() {});
+              },
+              child: Text('Удалить', style: GoogleFonts.montserrat(color: const Color(0xFFDB5F6F))),
+            ),
+          ],
+        );
+      },
     );
   }
 

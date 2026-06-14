@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -15,10 +16,26 @@ import '../widgets/pulse_indicator.dart';
 import 'alarm_settings_page.dart';
 import 'snore_detection_page.dart';
 
+const List<String> kDefaultSleepFactors = [
+  'Боль',
+  'Легкий сон',
+  'Медитация',
+  'Болезнь',
+  'Плотный прием пищи',
+  'Теплая ванна',
+  'Таблетка снотворного',
+  'Алкоголь',
+  'Тренировка',
+  'Растяжка',
+  'Поздний прием пищи',
+  'Состояние стресса',
+  'Кофе'
+];
 
 class _C {
   static const bg      = Color(0xFF080C14);
   static const surface = Color(0xFF111827);
+  static const border  = Color(0xFF1E2D4A);
   static const accent  = Color(0xFF4F6EF7);
   static const cream   = Color(0xFFEEF0F8);
   static const muted   = Color(0xFF7A84A8);
@@ -280,14 +297,34 @@ class _TrackerPageState extends State<TrackerPage>
   }
 
 
+  Future<void> _startSleepSession(List<String> factors) async {
+    final now    = DateTime.now();
+    final record = SleepRecord(
+      startTime: now,
+      alarmTime: _alarm.alarmEnabled
+          ? _alarm.formattedAlarmTime
+          : null,
+      notes: factors.isNotEmpty ? jsonEncode({"factors": factors}) : null,
+    );
+    final id = await _db.insertSleepRecord(record);
+
+    if (mounted) {
+      setState(() {
+        _activeSession = record.copyWith(id: id);
+        _isSleeping    = true;
+        _elapsed       = Duration.zero;
+      });
+      _startTimer();
+    }
+    await _audio.startMonitoring();
+  }
+
   Future<void> _toggleSleep() async {
     await _btnCtrl.forward();
     await _btnCtrl.reverse();
 
     if (_isSleeping) {
       _timer?.cancel();
-
-
       await _audio.stopMonitoring();
 
       final end  = DateTime.now();
@@ -295,39 +332,30 @@ class _TrackerPageState extends State<TrackerPage>
       final updated = _activeSession!.copyWith(endTime: end, durationMinutes: mins);
       await _db.updateSleepRecord(updated);
 
-      if (mounted) _showQualityDialog(updated);
-    } else {
-      final now    = DateTime.now();
-      final record = SleepRecord(
-        startTime: now,
-        alarmTime: _alarm.alarmEnabled
-            ? _alarm.formattedAlarmTime
-            : null,
-      );
-      final id = await _db.insertSleepRecord(record);
-
-
-
-
-
-      await _audio.startMonitoring();
-
-
       if (mounted) {
-        setState(() {
-          _activeSession = record.copyWith(id: id);
-          _isSleeping    = true;
-          _elapsed       = Duration.zero;
-        });
-        _startTimer();
+        if (_alarm.wakeMoodEnabled) {
+          _showQualityDialog(updated);
+        } else {
+          setState(() {
+            _isSleeping    = false;
+            _activeSession = null;
+            _elapsed       = Duration.zero;
+          });
+        }
+      }
+    } else {
+      if (_alarm.sleepFactorsEnabled) {
+        _showFactorsSelectionDialog();
+      } else {
+        await _startSleepSession([]);
       }
     }
   }
 
 
   void _showQualityDialog(SleepRecord record) {
-
     String? quality;
+    String? mood;
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -407,9 +435,16 @@ class _TrackerPageState extends State<TrackerPage>
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: ['😴', '😕', '😐', '🙂', '😄'].map((e) =>
                       GestureDetector(
-                        onTap: () {},
-                        child: Text(e,
-                            style: const TextStyle(fontSize: 28)),
+                        onTap: () => setS(() => mood = e),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 150),
+                          padding: const EdgeInsets.all(4),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: mood == e ? _C.accent.withValues(alpha: 0.15) : Colors.transparent,
+                          ),
+                          child: Text(e, style: const TextStyle(fontSize: 28)),
+                        ),
                       )).toList(),
                   ),
                 ],
@@ -425,8 +460,20 @@ class _TrackerPageState extends State<TrackerPage>
                       horizontal: 32, vertical: 12),
                 ),
                 onPressed: () async {
+                  Map<String, dynamic> notesMap = {};
+                  if (record.notes != null && record.notes!.isNotEmpty) {
+                    try {
+                      notesMap = Map<String, dynamic>.from(jsonDecode(record.notes!));
+                    } catch (_) {}
+                  }
+                  if (mood != null) {
+                    notesMap['mood'] = mood;
+                  }
                   await _db.updateSleepRecord(
-                      record.copyWith(quality: quality ?? 'Хорошо'));
+                      record.copyWith(
+                        quality: quality ?? 'Хорошо',
+                        notes: notesMap.isNotEmpty ? jsonEncode(notesMap) : null,
+                      ));
                   if (ctx.mounted) Navigator.of(ctx).pop();
                   setState(() {
                     _isSleeping    = false;
@@ -447,6 +494,354 @@ class _TrackerPageState extends State<TrackerPage>
     );
   }
 
+
+  void _showFactorsSelectionDialog() {
+    List<String> selected = [];
+    final settings = Hive.box('settings');
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setS) {
+            final List<String> factorsList = List<String>.from(
+              settings.get('sleepFactorsList', defaultValue: kDefaultSleepFactors)
+            );
+
+            return AlertDialog(
+              backgroundColor: _C.bg,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(24),
+                  side: BorderSide(color: _C.border)),
+              contentPadding: const EdgeInsets.all(20),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'Сделайте запись перед отходом ко сну',
+                          style: GoogleFonts.montserrat(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: _C.cream),
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close, color: _C.muted, size: 20),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFF4DB6AC),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16)),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        ),
+                        icon: const Icon(Icons.edit, size: 16, color: Colors.white),
+                        label: Text(
+                          'Изменить/Добавить',
+                          style: GoogleFonts.montserrat(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white),
+                        ),
+                        onPressed: () async {
+                          await _showEditFactorsDialog(ctx);
+                          setS(() {}); // Refresh list
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 250),
+                    child: SingleChildScrollView(
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: factorsList.map((factor) {
+                          final isSel = selected.contains(factor);
+                          return GestureDetector(
+                            onTap: () {
+                              setS(() {
+                                if (isSel) {
+                                  selected.remove(factor);
+                                } else {
+                                  selected.add(factor);
+                                }
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                              decoration: BoxDecoration(
+                                color: isSel ? _C.accent.withValues(alpha: 0.2) : _C.surface,
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: isSel ? _C.accent : _C.divider,
+                                ),
+                              ),
+                              child: Text(
+                                factor,
+                                style: GoogleFonts.montserrat(
+                                  fontSize: 12,
+                                  fontWeight: isSel ? FontWeight.w600 : FontWeight.w400,
+                                  color: isSel ? _C.accent : _C.muted,
+                                ),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(24)),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _startSleepSession(selected);
+                    },
+                    child: Text(
+                      'Следующее',
+                      style: GoogleFonts.montserrat(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: _C.bg),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _startSleepSession([]);
+                    },
+                    child: Text(
+                      'Пропустить',
+                      style: GoogleFonts.montserrat(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: _C.muted),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _showEditFactorsDialog(BuildContext parentCtx) async {
+    final settings = Hive.box('settings');
+    List<String> factorsList = List<String>.from(
+      settings.get('sleepFactorsList', defaultValue: kDefaultSleepFactors)
+    );
+
+    await showModalBottomSheet(
+      context: parentCtx,
+      backgroundColor: _C.bg,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (ctx, setS) {
+            return Container(
+              padding: EdgeInsets.fromLTRB(20, 20, 20, 20 + MediaQuery.of(ctx).viewInsets.bottom),
+              height: MediaQuery.of(ctx).size.height * 0.85,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.close, color: _C.cream),
+                        onPressed: () => Navigator.pop(ctx),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Зажмите и тащите, чтобы сменить порядок',
+                          style: GoogleFonts.montserrat(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: _C.cream),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: ReorderableListView.builder(
+                      itemCount: factorsList.length,
+                      itemBuilder: (ctx, i) {
+                        final factor = factorsList[i];
+                        return Container(
+                          key: ValueKey(factor + i.toString()),
+                          margin: const EdgeInsets.symmetric(vertical: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          decoration: BoxDecoration(
+                            color: _C.surface,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: _C.border),
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                factor,
+                                style: GoogleFonts.montserrat(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: _C.cream),
+                              ),
+                              GestureDetector(
+                                onTap: () {
+                                  setS(() {
+                                    factorsList.removeAt(i);
+                                  });
+                                },
+                                child: const Icon(Icons.remove_circle,
+                                    color: Color(0xFFDB5F6F), size: 20),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                      onReorder: (oldIndex, newIndex) {
+                        setS(() {
+                          if (newIndex > oldIndex) {
+                            newIndex -= 1;
+                          }
+                          final item = factorsList.removeAt(oldIndex);
+                          factorsList.insert(newIndex, item);
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: _C.accent,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    onPressed: () => _showAddNewFactorDialog(ctx, (newFactor) {
+                      setS(() {
+                        if (newFactor.isNotEmpty && !factorsList.contains(newFactor)) {
+                          factorsList.add(newFactor);
+                        }
+                      });
+                    }),
+                    child: Text(
+                      'Добавить новый',
+                      style: GoogleFonts.montserrat(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  FilledButton(
+                    style: FilledButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14)),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    onPressed: () async {
+                      await settings.put('sleepFactorsList', factorsList);
+                      if (ctx.mounted) Navigator.pop(ctx);
+                    },
+                    child: Text(
+                      'Сохранить',
+                      style: GoogleFonts.montserrat(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: _C.bg),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showAddNewFactorDialog(BuildContext parentCtx, Function(String) onSave) {
+    final controller = TextEditingController();
+    showDialog(
+      context: parentCtx,
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: _C.surface,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+              side: BorderSide(color: _C.border)),
+          title: Text(
+            'Введите содержимое',
+            style: GoogleFonts.montserrat(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: _C.cream),
+          ),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            style: GoogleFonts.montserrat(color: _C.cream, fontSize: 14),
+            decoration: InputDecoration(
+              hintText: 'Название фактора',
+              hintStyle: GoogleFonts.montserrat(color: _C.muted, fontSize: 12),
+              enabledBorder: const UnderlineInputBorder(borderSide: BorderSide(color: _C.divider)),
+              focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: _C.accent)),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text(
+                'Отмена',
+                style: GoogleFonts.montserrat(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: _C.muted),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                onSave(controller.text.trim());
+                Navigator.pop(ctx);
+              },
+              child: Text(
+                'Сохранить',
+                style: GoogleFonts.montserrat(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: _C.accent),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
 
   String get _elapsedStr {
     final h = _elapsed.inHours.toString().padLeft(2, '0');

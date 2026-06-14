@@ -23,9 +23,13 @@ class _C {
 
 
   static Color forType(SoundEventType t) => switch (t) {
-    SoundEventType.snore  => snore,
-    SoundEventType.talk   => talk,
-    SoundEventType.mumble => mumble,
+    SoundEventType.snore         => snore,
+    SoundEventType.talk          => talk,
+    SoundEventType.cough         => danger,
+    SoundEventType.fart          => mumble,
+    SoundEventType.animals       => indigo,
+    SoundEventType.environmental => indigoSoft,
+    SoundEventType.other         => muted,
   };
 }
 
@@ -40,6 +44,7 @@ class SnoreDetectionPage extends StatefulWidget {
 
 class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
   SleepAudioProvider get _p => widget.provider;
+  final Set<String> _expandedDates = {};
 
 
   @override
@@ -101,12 +106,6 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
                     child: _buildSectionHeader(label: 'Sleep History'),
                   ),
                   SliverToBoxAdapter(child: _buildHistorySection()),
-
-
-                  SliverToBoxAdapter(
-                    child: _buildSectionHeader(label: 'Sound Records'),
-                  ),
-                  SliverToBoxAdapter(child: _buildRecordsSection()),
 
                   const SliverToBoxAdapter(child: SizedBox(height: 40)),
                 ],
@@ -394,6 +393,48 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
   }
 
 
+  void _confirmDeleteDay(String dateKey, List<SoundEvent> events) {
+    final date = DateFormat('yyyy-MM-dd').parse(dateKey);
+    final label = DateFormat('d MMMM', 'ru_RU').format(date);
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          backgroundColor: _C.bg1,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
+              side: const BorderSide(color: Color(0xFF1E2D50))),
+          title: Text(
+            'Очистить день?',
+            style: GoogleFonts.montserrat(
+                color: _C.cream, fontWeight: FontWeight.w700, fontSize: 16),
+          ),
+          content: Text(
+            'Вы уверены, что хотите удалить все записи за ночь $label (${events.length} событий)?',
+            style: GoogleFonts.montserrat(color: _C.muted, fontSize: 13),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Отмена', style: GoogleFonts.montserrat(color: _C.muted)),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                await _p.deleteEvents(events);
+                setState(() {
+                  _expandedDates.remove(dateKey);
+                });
+              },
+              child: Text('Удалить', style: GoogleFonts.montserrat(color: _C.danger)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Widget _buildHistorySection() {
     final records = _p.allRecords;
     if (records.isEmpty) {
@@ -403,7 +444,6 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
         hint: 'Past sleep sessions will appear here\ngrouped by night.',
       );
     }
-
 
     final Map<String, List<SoundEvent>> grouped = {};
     for (final e in records) {
@@ -418,54 +458,164 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
           final date = DateFormat('yyyy-MM-dd').parse(entry.key);
           final label = DateFormat('d MMMM', 'ru_RU').format(date);
           final events = entry.value;
-          final snoreCount  = events.where((e) => e.type == SoundEventType.snore).length;
-          final talkCount   = events.where((e) => e.type == SoundEventType.talk).length;
-          final mumbleCount = events.where((e) => e.type == SoundEventType.mumble).length;
+          final counts = <SoundEventType, int>{};
+          for (final e in events) {
+            counts[e.type] = (counts[e.type] ?? 0) + 1;
+          }
+          final isExpanded  = _expandedDates.contains(entry.key);
 
           return Padding(
             padding: const EdgeInsets.only(bottom: 12),
             child: GlassCard(
               padding: const EdgeInsets.all(16),
               borderRadius: 16,
-              child: Row(children: [
-
-                Container(
-                  width: 48, height: 48,
-                  decoration: BoxDecoration(
-                    color: _C.indigo.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            setState(() {
+                              if (isExpanded) {
+                                _expandedDates.remove(entry.key);
+                              } else {
+                                _expandedDates.add(entry.key);
+                              }
+                            });
+                          },
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 48, height: 48,
+                                decoration: BoxDecoration(
+                                  color: _C.indigo.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Text(
+                                      DateFormat('d').format(date),
+                                      style: GoogleFonts.montserrat(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w800,
+                                          color: _C.indigo),
+                                    ),
+                                    Text(
+                                      DateFormat('MMM').format(date).toUpperCase(),
+                                      style: GoogleFonts.montserrat(
+                                          fontSize: 9, color: _C.muted),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Ночь $label',
+                                      style: GoogleFonts.montserrat(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                          color: _C.cream),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Wrap(
+                                      spacing: 8,
+                                      runSpacing: 4,
+                                      children: counts.entries.map((entry) => 
+                                        _typeBadge('${entry.key.emoji} ${entry.value}', _C.forType(entry.key))
+                                      ).toList(),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          setState(() {
+                            if (isExpanded) {
+                              _expandedDates.remove(entry.key);
+                            } else {
+                              _expandedDates.add(entry.key);
+                            }
+                          });
+                        },
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                '${events.length}',
+                                style: GoogleFonts.montserrat(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w800,
+                                    color: _C.cream),
+                              ),
+                              Text(
+                                'событий',
+                                style: GoogleFonts.montserrat(
+                                    fontSize: 9, color: _C.muted),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        onTap: () => _confirmDeleteDay(entry.key, events),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          child: const Icon(
+                            Icons.delete_outline_rounded,
+                            color: _C.danger,
+                            size: 20,
+                          ),
+                        ),
+                      ),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () {
+                          setState(() {
+                            if (isExpanded) {
+                              _expandedDates.remove(entry.key);
+                            } else {
+                              _expandedDates.add(entry.key);
+                            }
+                          });
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
+                          child: Icon(
+                            isExpanded
+                                ? Icons.keyboard_arrow_up_rounded
+                                : Icons.keyboard_arrow_down_rounded,
+                            color: _C.muted,
+                            size: 24,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                    Text(DateFormat('d').format(date),
-                        style: GoogleFonts.montserrat(
-                            fontSize: 16, fontWeight: FontWeight.w800, color: _C.indigo)),
-                    Text(DateFormat('MMM').format(date).toUpperCase(),
-                        style: GoogleFonts.montserrat(fontSize: 9, color: _C.muted)),
-                  ]),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                    Text('Ночь $label',
-                        style: GoogleFonts.montserrat(
-                            fontSize: 14, fontWeight: FontWeight.w700, color: _C.cream)),
+                  if (isExpanded) ...[
+                    const Divider(color: Colors.white10, height: 24),
                     const SizedBox(height: 4),
-                    Wrap(spacing: 8, children: [
-                      if (snoreCount  > 0) _typeBadge('😴 $snoreCount',  _C.snore),
-                      if (talkCount   > 0) _typeBadge('🗣️ $talkCount',   _C.talk),
-                      if (mumbleCount > 0) _typeBadge('💤 $mumbleCount', _C.mumble),
-                    ]),
-                  ]),
-                ),
-
-                Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                  Text('${events.length}',
-                      style: GoogleFonts.montserrat(
-                          fontSize: 22, fontWeight: FontWeight.w800, color: _C.cream)),
-                  Text('событий',
-                      style: GoogleFonts.montserrat(fontSize: 10, color: _C.muted)),
-                ]),
-              ]),
+                    Column(
+                      children: events.map((e) => _buildRecordCard(e)).toList(),
+                    ),
+                  ],
+                ],
+              ),
             ),
           );
         }).toList(),
@@ -484,25 +634,6 @@ class _SnoreDetectionPageState extends State<SnoreDetectionPage> {
       child: Text(label,
           style: GoogleFonts.montserrat(
               fontSize: 10, fontWeight: FontWeight.w600, color: color)),
-    );
-  }
-
-
-  Widget _buildRecordsSection() {
-    final records = _p.allRecords;
-    if (records.isEmpty) {
-      return _buildEmptyHint(
-        icon: Icons.audio_file_outlined,
-        label: 'No recordings yet',
-        hint: 'Audio recordings will appear here\nafter sleep monitoring.',
-      );
-    }
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        children: records.map((event) => _buildRecordCard(event)).toList(),
-      ),
     );
   }
 

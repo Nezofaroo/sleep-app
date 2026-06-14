@@ -1,0 +1,106 @@
+Flutter crash report.
+Please report a bug at https://github.com/flutter/flutter/issues.
+
+## command
+
+flutter run
+
+## exception
+
+FormatException: FormatException: Unexpected end of input (at character 1)
+
+^
+
+
+```
+#0      _ChunkedJsonParser.fail (dart:convert-patch/convert_patch.dart:1467:5)
+#1      _ChunkedJsonParser.close (dart:convert-patch/convert_patch.dart:497:7)
+#2      _JsonStringDecoderSink.close (dart:convert-patch/convert_patch.dart:1564:13)
+#3      _ConverterStreamEventSink.close (dart:convert/chunked_conversion.dart:79:18)
+#4      _SinkTransformerStreamSubscription._handleDone (dart:async/stream_transformers.dart:136:24)
+#5      _rootRun (dart:async/zone_root.dart:27:47)
+#6      _CustomZone.run (dart:async/zone.dart:726:19)
+#7      _CustomZone.runGuarded (dart:async/zone.dart:625:7)
+#8      _BufferingStreamSubscription._sendDone.sendDone (dart:async/stream_impl.dart:434:13)
+#9      _BufferingStreamSubscription._sendDone (dart:async/stream_impl.dart:444:7)
+#10     _BufferingStreamSubscription._close (dart:async/stream_impl.dart:333:7)
+#11     _SinkTransformerStreamSubscription._close (dart:async/stream_transformers.dart:91:11)
+#12     _EventSinkWrapper.close (dart:async/stream_transformers.dart:21:11)
+#13     _StringAdapterSink.close (dart:convert/string_conversion.dart:244:11)
+#14     _Utf8ConversionSink.close (dart:convert/string_conversion.dart:304:20)
+#15     _ConverterStreamEventSink.close (dart:convert/chunked_conversion.dart:79:18)
+#16     _SinkTransformerStreamSubscription._handleDone (dart:async/stream_transformers.dart:136:24)
+#17     _rootRun (dart:async/zone_root.dart:27:47)
+#18     _CustomZone.run (dart:async/zone.dart:726:19)
+#19     _CustomZone.runGuarded (dart:async/zone.dart:625:7)
+#20     _BufferingStreamSubscription._sendDone.sendDone (dart:async/stream_impl.dart:434:13)
+#21     _BufferingStreamSubscription._sendDone (dart:async/stream_impl.dart:444:7)
+#22     _BufferingStreamSubscription._close (dart:async/stream_impl.dart:333:7)
+#23     _SyncStreamControllerDispatch._sendDone (dart:async/stream_controller.dart:806:19)
+#24     _StreamController._closeUnchecked (dart:async/stream_controller.dart:652:7)
+#25     _StreamController.close (dart:async/stream_controller.dart:645:5)
+#26     _Socket._onData (dart:io-patch/socket_patch.dart:2881:21)
+#27     _rootRunUnary (dart:async/zone_root.dart:56:13)
+#28     _CustomZone.runUnary (dart:async/zone.dart:733:19)
+#29     _CustomZone.runUnaryGuarded (dart:async/zone.dart:633:7)
+#30     _BufferingStreamSubscription._sendData (dart:async/stream_impl.dart:381:11)
+#31     _BufferingStreamSubscription._add (dart:async/stream_impl.dart:312:7)
+#32     _SyncStreamControllerDispatch._sendData (dart:async/stream_controller.dart:798:19)
+#33     _StreamController._add (dart:async/stream_controller.dart:663:7)
+#34     _StreamController.add (dart:async/stream_controller.dart:618:5)
+#35     new _RawSocket.<anonymous closure> (dart:io-patch/socket_patch.dart:2319:33)
+#36     _NativeSocket.issueReadEvent.issue (dart:io-patch/socket_patch.dart:1640:18)
+#37     _microtaskLoop (dart:async/schedule_microtask.dart:40:35)
+#38     _startMicrotaskLoop (dart:async/schedule_microtask.dart:49:5)
+#39     _runPendingImmediateCallback (dart:isolate-patch/isolate_patch.dart:127:13)
+#40     _RawReceivePort._handleMessage (dart:isolate-patch/isolate_patch.dart:193:5)
+```
+
+## flutter doctor
+
+```
+[32m[✓][39m Flutter (Channel stable, 3.44.0, on Microsoft Windows [Version 10.0.22000.9], locale ru-RU) [664ms]
+    [32m•[39m Flutter version 3.44.0 on channel stable at C:\src\flutter
+    [32m•[39m Upstream repository https://github.com/flutter/flutter.git
+    [32m•[39m FLUTTER_GIT_URL = https://github.com/flutter/flutter.git
+    [32m•[39m Framework revision 559ffa3f75 (4 weeks ago), 2026-05-15 14:13:13 -0700
+    [32m•[39m Engine revision 4c525dac5e
+    [32m•[39m Dart version 3.12.0
+    [32m•[39m DevTools version 2.57.0
+    [32m•[39m Feature flags: enable-web, enable-linux-desktop, enable-macos-desktop, enable-windows-desktop, enable-android, enable-ios, cli-animations,
+      enable-native-assets, enable-swift-package-manager, omit-legacy-version-file, enable-lldb-debugging, enable-uiscene-migration
+
+[32m[✓][39m Windows Version (Њ ©Єа®б®дв Windows 11 „®¬ и­пп ¤«п ®¤­®Ј® п§лЄ  64-bit, 21H2, 2009) [2,3s]
+
+[33m[!][39m Android toolchain - develop for Android devices (Android SDK version 36.0.0-rc5) [1 161ms]
+    [32m•[39m Android SDK at C:\Users\admin\AppData\Local\Android\Sdk
+    [32m•[39m Emulator version 36.3.10.0 (build_id 14472402) (CL:N/A)
+    [32m•[39m Platform android-36, build-tools 36.0.0-rc5
+    [32m•[39m Java binary at: C:\Program Files\Android\Android Studio\jbr\bin\java
+      This is the JDK bundled with the latest Android Studio installation on this machine.
+      To manually set the JDK path, use: `flutter config --jdk-dir="path/to/jdk"`.
+    [32m•[39m Java version OpenJDK Runtime Environment (build 21.0.7+-13880790-b1038.58)
+    [31m✗[39m Android license status unknown.
+      Run `flutter doctor --android-licenses` to accept the SDK licenses.
+      See https://flutter.dev/to/windows-android-setup for more details.
+
+[32m[✓][39m Chrome - develop for the web [343ms]
+    [32m•[39m Chrome at C:\Program Files (x86)\Google\Chrome\Application\chrome.exe
+
+[33m[!][39m Visual Studio - develop Windows apps (Visual Studio Community 2019 16.11.31) [342ms]
+    [32m•[39m Visual Studio at C:\Program Files (x86)\Microsoft Visual Studio\2019\Community
+    [32m•[39m Visual Studio Community 2019 version 16.11.34114.132
+    [31m✗[39m The current Visual Studio installation is incomplete.
+      Please use Visual Studio Installer to complete the installation or reinstall Visual Studio.
+
+[32m[✓][39m Connected device (4 available) [682ms]
+    [32m•[39m 2311DRK48G (mobile) • GQ69XCAQWOZ9VSYP • android-arm64  • Android 15 (API 35)
+    [32m•[39m Windows (desktop)   • windows          • windows-x64    • Microsoft Windows [Version 10.0.22000.9]
+    [32m•[39m Chrome (web)        • chrome           • web-javascript • Google Chrome 149.0.7827.102
+    [32m•[39m Edge (web)          • edge             • web-javascript • Microsoft Edge 149.0.4022.69
+
+[32m[✓][39m Network resources [811ms]
+    [32m•[39m All expected network resources are available.
+
+[33m![39m Doctor found issues in 2 categories.
+```

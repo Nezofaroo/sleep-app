@@ -161,7 +161,7 @@ class _MainShellState extends State<MainShell> {
         audioProvider: widget.audioProvider,
       ),
       const DiscoverPage(),
-      const StatisticsPage(),
+      StatisticsPage(audioProvider: widget.audioProvider),
       ProfilePage(
         alarmProvider: widget.alarmProvider,
         audioProvider: widget.audioProvider,

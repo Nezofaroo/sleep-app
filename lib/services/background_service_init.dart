@@ -129,7 +129,6 @@ Future<void> onBackgroundServiceStart(ServiceInstance service) async {
   // Alarm Management state
   final alarmService = AlarmService();
   bool isAlarmRinging = false;
-  DateTime? lastAlarmTriggeredTime;
   DateTime? lastBedtimeTriggeredTime;
   DateTime? lastPreBedtimeTriggeredTime;
 
@@ -144,7 +143,7 @@ Future<void> onBackgroundServiceStart(ServiceInstance service) async {
           await b.put(entry.key, entry.value);
         }
       }
-      lastAlarmTriggeredTime = null;
+      await b.delete('lastAlarmTriggeredDate');
       lastBedtimeTriggeredTime = null;
       lastPreBedtimeTriggeredTime = null;
     }
@@ -260,6 +259,12 @@ Future<void> onBackgroundServiceStart(ServiceInstance service) async {
         final String ringtone = b.get('ringtone', defaultValue: 'default') as String;
         final double alarmVolume = (b.get('alarmVolume', defaultValue: 0.7) as num).toDouble();
         final bool vibrate = b.get('vibrationEnabled', defaultValue: true) as bool;
+        final bool smartAlarmEnabled = b.get('smartAlarmEnabled', defaultValue: false) as bool;
+        final int wakeWindowMinutes = b.get('wakeWindowMinutes', defaultValue: 30) as int;
+
+        final nowMinutes = now.hour * 60 + now.minute;
+        final targetMinutes = alarmHour * 60 + alarmMinute;
+        bool shouldTrigger = false;
 
         // Check if snooze is active
         final String? snoozeTimeStr = b.get('snoozeAlarmTime') as String?;
@@ -267,26 +272,62 @@ Future<void> onBackgroundServiceStart(ServiceInstance service) async {
           try {
             final snoozeTime = DateTime.parse(snoozeTimeStr);
             if (now.isAfter(snoozeTime) || now.isAtSameMomentAs(snoozeTime)) {
-              isAlarmRinging = true;
-              await _triggerBackgroundAlarm(service, ringtone, alarmVolume, vibrate);
+              shouldTrigger = true;
             }
           } catch (e) {
             print("Background Service: Error parsing snoozeAlarmTime: $e");
             await b.delete('snoozeAlarmTime');
           }
         } else {
-          // Check normal alarm
-          if (now.hour == alarmHour && now.minute == alarmMinute) {
-            final lastTriggered = lastAlarmTriggeredTime;
-            if (lastTriggered == null || now.difference(lastTriggered).inMinutes >= 2) {
-              lastAlarmTriggeredTime = now;
-              isAlarmRinging = true;
-              final int defaultSnooze = b.get('snoozeMinutes', defaultValue: 10) as int;
-              await b.put('currentSnoozeMinutes', defaultSnooze);
-              
-              await _triggerBackgroundAlarm(service, ringtone, alarmVolume, vibrate);
+          // Check if already triggered today to prevent double triggering
+          final String todayKey = "${now.year}-${now.month}-${now.day}";
+          final String? lastTriggeredDate = b.get('lastAlarmTriggeredDate') as String?;
+          
+          if (lastTriggeredDate != todayKey) {
+            // Check smart alarm
+            if (smartAlarmEnabled) {
+              final wakeStartMinutes = (targetMinutes - wakeWindowMinutes) % 1440;
+              final inWakeWindow = _isTimeInWindow(nowMinutes, wakeStartMinutes, targetMinutes);
+              if (inWakeWindow) {
+                bool detectedMovement = false;
+                
+                // Open sound event box
+                if (!Hive.isBoxOpen(kSoundEventBoxName)) {
+                  await Hive.openBox<SoundEvent>(kSoundEventBoxName);
+                }
+                final eventBox = Hive.box<SoundEvent>(kSoundEventBoxName);
+                
+                // Check if any event was recorded in the last wakeWindowMinutes
+                final startLimit = now.subtract(Duration(minutes: wakeWindowMinutes));
+                for (final event in eventBox.values) {
+                  if (event.startTime.isAfter(startLimit)) {
+                    detectedMovement = true;
+                    break;
+                  }
+                }
+                
+                if (detectedMovement) {
+                  shouldTrigger = true;
+                  await b.put('lastAlarmTriggeredDate', todayKey);
+                  print("Background Service: Smart Alarm triggered early due to detected movement");
+                }
+              }
+            }
+            
+            // Check normal alarm
+            if (!shouldTrigger && now.hour == alarmHour && now.minute == alarmMinute) {
+              shouldTrigger = true;
+              await b.put('lastAlarmTriggeredDate', todayKey);
             }
           }
+        }
+
+        if (shouldTrigger) {
+          isAlarmRinging = true;
+          final int defaultSnooze = b.get('snoozeMinutes', defaultValue: 10) as int;
+          await b.put('currentSnoozeMinutes', defaultSnooze);
+          
+          await _triggerBackgroundAlarm(service, ringtone, alarmVolume, vibrate);
         }
       }
     }
@@ -431,4 +472,12 @@ Future<void> stopSnoreDetectionService() async {
 
 Future<bool> isSnoreDetectionRunning() async {
   return FlutterBackgroundService().isRunning();
+}
+
+bool _isTimeInWindow(int nowM, int startM, int endM) {
+  if (startM <= endM) {
+    return nowM >= startM && nowM < endM;
+  } else {
+    return nowM >= startM || nowM < endM;
+  }
 }

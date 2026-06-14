@@ -220,6 +220,24 @@ class SleepAudioProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> deleteEvents(List<SoundEvent> eventsToDelete) async {
+    for (final event in eventsToDelete) {
+      if (_currentlyPlayingId == event.id) {
+        await stopPlayback();
+      }
+      _events.remove(event);
+    }
+    notifyListeners();
+    try {
+      if (Hive.isBoxOpen(kSoundEventBoxName)) {
+        final box = Hive.box<SoundEvent>(kSoundEventBoxName);
+        for (final event in eventsToDelete) {
+          await box.delete(event.id);
+        }
+      }
+    } catch (_) {}
+  }
+
 
   List<SoundEvent> get allRecords {
     if (!Hive.isBoxOpen(kSoundEventBoxName)) return const [];
