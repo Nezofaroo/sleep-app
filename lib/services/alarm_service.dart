@@ -18,12 +18,19 @@ class AlarmService {
 
   // Stable default URLs for built-in ringtones
   static const Map<String, String> _ringtoneUrls = {
-    'gentle': 'https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg',
-    'chime': 'https://assets.mixkit.co/active_storage/sfx/2568/2568-84.wav',
-    'nature': 'https://actions.google.com/sounds/v1/nature/forest_morning_birds.ogg',
-    'digital': 'https://actions.google.com/sounds/v1/alarms/digital_watch_alarm_long.ogg',
-    'piano': 'https://actions.google.com/sounds/v1/alarms/mechanical_clock_ring.ogg',
+    'default': 'https://actions.google.com/sounds/v1/alarms/mechanical_clock_ring.ogg',
+    'gentle': 'https://raw.githubusercontent.com/Faris0520/windows-media/main/Alarm04.wav',
+    'chime': 'https://raw.githubusercontent.com/Faris0520/windows-media/main/Alarm03.wav',
+    'nature': 'https://raw.githubusercontent.com/aosp-mirror/platform_frameworks_base/refs/heads/main/data/sounds/alarms/ogg/Argon.ogg',
+    'digital': 'https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg',
+    'piano': 'https://raw.githubusercontent.com/Faris0520/windows-media/main/Alarm06.wav',
   };
+
+  static String _getFileExtension(String url) {
+    if (url.endsWith('.wav')) return 'wav';
+    if (url.endsWith('.mp3')) return 'mp3';
+    return 'ogg';
+  }
 
   /// Asynchronously download base alarm sounds if they are not already cached
   static Future<void> downloadBaseMelodies() async {
@@ -34,7 +41,7 @@ class AlarmService {
       client.connectionTimeout = const Duration(seconds: 10);
 
       for (final entry in _ringtoneUrls.entries) {
-        final ext = entry.key == 'chime' ? 'wav' : 'ogg';
+        final ext = _getFileExtension(entry.value);
         final file = File('${docsDir.path}/${entry.key}.$ext');
         
         if (!await file.exists()) {
@@ -69,14 +76,18 @@ class AlarmService {
     }
     
     // Check locally downloaded file
-    final ext = ringtoneId == 'chime' ? 'wav' : 'ogg';
-    final localFile = File('${docsDir.path}/$ringtoneId.$ext');
-    if (await localFile.exists()) {
-      return localFile.path;
+    final url = _ringtoneUrls[ringtoneId];
+    if (url != null) {
+      final ext = _getFileExtension(url);
+      final localFile = File('${docsDir.path}/$ringtoneId.$ext');
+      if (await localFile.exists()) {
+        return localFile.path;
+      }
+      return url;
     }
 
-    // Fallback to URL or system default
-    return _ringtoneUrls[ringtoneId] ?? 'content://settings/system/alarm_alert';
+    // Fallback to system default
+    return 'content://settings/system/alarm_alert';
   }
 
   /// Start playing the alarm ringtone and vibrating continuously

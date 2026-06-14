@@ -1,9 +1,7 @@
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter_background_service_android/flutter_background_service_android.dart';
 import 'package:hive/hive.dart';
 import 'package:path_provider/path_provider.dart';
 import '../models/sound_event.dart';
@@ -97,29 +95,35 @@ Future<void> onBackgroundServiceStart(ServiceInstance service) async {
   if (!Hive.isBoxOpen('settings')) {
     await Hive.openBox('settings');
   }
-  final settingsBox = Hive.box('settings');
 
   final vad = SleepAudioTriggerService(service);
 
-  try {
-    final ready = await vad.initialize();
-    if (!ready) {
-      await Future.delayed(const Duration(seconds: 1));
-      final retryReady = await vad.initialize();
-      if (!retryReady) {
+  // Setup startMonitoring listener
+  service.on('startMonitoring').listen((_) async {
+    try {
+      final ready = await vad.initialize();
+      if (ready) {
+        await vad.startMonitoring();
+        if (service is AndroidServiceInstance) {
+          service.setForegroundNotificationInfo(
+            title: 'Трекер сна',
+            content: 'Запись звука и анализ дыхания...',
+          );
+        }
+        service.invoke('statusChanged', {'status': 'monitoring'});
+      } else {
         service.invoke('error', {'message': 'Микрофон занят другим приложением'});
-        service.stopSelf();
-        return;
       }
+    } catch (e) {
+      service.invoke('error', {'message': 'Ошибка запуска мониторинга: $e'});
     }
+  });
 
-    await vad.startMonitoring();
-    service.invoke('statusChanged', {'status': 'monitoring'});
-    print("Background Service: Мониторинг успешно запущен");
-  } catch (e) {
-    service.invoke('error', {'message': 'Ошибка сервиса: $e'});
-    service.stopSelf();
-    return;
+  if (service is AndroidServiceInstance) {
+    service.setForegroundNotificationInfo(
+      title: 'Sleep.ly',
+      content: 'Служба активна в фоновом режиме',
+    );
   }
 
   // Alarm Management state
@@ -128,6 +132,23 @@ Future<void> onBackgroundServiceStart(ServiceInstance service) async {
   DateTime? lastAlarmTriggeredTime;
   DateTime? lastBedtimeTriggeredTime;
   DateTime? lastPreBedtimeTriggeredTime;
+
+  // Listen to Settings updates from main isolate
+  service.on('updateSettings').listen((event) async {
+    if (event != null) {
+      final b = Hive.box('settings');
+      for (final entry in event.entries) {
+        if (entry.value == null) {
+          await b.delete(entry.key);
+        } else {
+          await b.put(entry.key, entry.value);
+        }
+      }
+      lastAlarmTriggeredTime = null;
+      lastBedtimeTriggeredTime = null;
+      lastPreBedtimeTriggeredTime = null;
+    }
+  });
 
   // Start downloading default melodies in the background
   AlarmService.downloadBaseMelodies();
@@ -243,10 +264,15 @@ Future<void> onBackgroundServiceStart(ServiceInstance service) async {
         // Check if snooze is active
         final String? snoozeTimeStr = b.get('snoozeAlarmTime') as String?;
         if (snoozeTimeStr != null) {
-          final snoozeTime = DateTime.parse(snoozeTimeStr);
-          if (now.isAfter(snoozeTime) || now.isAtSameMomentAs(snoozeTime)) {
-            isAlarmRinging = true;
-            await _triggerBackgroundAlarm(service, ringtone, alarmVolume, vibrate);
+          try {
+            final snoozeTime = DateTime.parse(snoozeTimeStr);
+            if (now.isAfter(snoozeTime) || now.isAtSameMomentAs(snoozeTime)) {
+              isAlarmRinging = true;
+              await _triggerBackgroundAlarm(service, ringtone, alarmVolume, vibrate);
+            }
+          } catch (e) {
+            print("Background Service: Error parsing snoozeAlarmTime: $e");
+            await b.delete('snoozeAlarmTime');
           }
         } else {
           // Check normal alarm
@@ -273,7 +299,13 @@ Future<void> onBackgroundServiceStart(ServiceInstance service) async {
     await notificationPlugin.cancel(id: 1002);
     
     await vad.stopAll();
-    service.stopSelf();
+    if (service is AndroidServiceInstance) {
+      service.setForegroundNotificationInfo(
+        title: 'Sleep.ly',
+        content: 'Служба активна в фоновом режиме',
+      );
+    }
+    service.invoke('statusChanged', {'status': 'idle'});
   });
 
   service.on('ping').listen((_) => service.invoke('pong', {}));
@@ -355,11 +387,11 @@ Future<void> configureBackgroundService() async {
   await svc.configure(
     androidConfiguration: AndroidConfiguration(
       onStart: onBackgroundServiceStart,
-      autoStart: false,
+      autoStart: true,
       isForegroundMode: true,
       notificationChannelId: 'sleep_tracker_audio',
-      initialNotificationTitle: 'Трекер сна',
-      initialNotificationContent: 'Готов к работе...',
+      initialNotificationTitle: 'Sleep.ly',
+      initialNotificationContent: 'Служба активна в фоновом режиме',
       foregroundServiceNotificationId: 2001,
       foregroundServiceTypes: const [AndroidForegroundType.microphone],
     ),
@@ -369,19 +401,31 @@ Future<void> configureBackgroundService() async {
       onBackground: onIosBackground,
     ),
   );
+
+  final isRunning = await svc.isRunning();
+  if (!isRunning) {
+    await svc.startService();
+  }
 }
 
 Future<void> startSnoreDetectionService() async {
   final service = FlutterBackgroundService();
+  final isRunning = await service.isRunning();
 
-  if (await service.isRunning()) {
-    service.invoke('stopMonitoring');
+  final b = Hive.box('settings');
+  await b.put('isTrackingActive', true);
+
+  if (!isRunning) {
+    await service.startService();
     await Future.delayed(const Duration(milliseconds: 500));
   }
-  await service.startService();
+  service.invoke('startMonitoring');
 }
 
 Future<void> stopSnoreDetectionService() async {
+  final b = Hive.box('settings');
+  await b.put('isTrackingActive', false);
+
   FlutterBackgroundService().invoke('stopMonitoring');
 }
 

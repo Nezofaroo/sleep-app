@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:hive/hive.dart';
 import '../models/alarm_settings.dart';
 
@@ -66,7 +67,39 @@ class AlarmSettingsProvider extends ChangeNotifier {
       b.put('reminderOffsetHours',    updated.reminderOffsetHours),
       b.put('reminderOffsetMinutes',  updated.reminderOffsetMinutes),
       b.put('sleepFactorsEnabled',    updated.sleepFactorsEnabled),
+      b.delete('snoozeAlarmTime'),
+      b.delete('currentSnoozeMinutes'),
     ]);
+
+    try {
+      final isRunning = await FlutterBackgroundService().isRunning();
+      if (isRunning) {
+        FlutterBackgroundService().invoke('updateSettings', {
+          'alarmHour':              updated.alarmHour,
+          'alarmMinute':            updated.alarmMinute,
+          'alarmEnabled':           updated.alarmEnabled,
+          'ringtone':               updated.ringtone,
+          'alarmVolume':            updated.alarmVolume,
+          'vibrationEnabled':       updated.vibrationEnabled,
+          'smartAlarmEnabled':      updated.smartAlarmEnabled,
+          'wakeWindowMinutes':      updated.wakeWindowMinutes,
+          'snoozeMinutes':          updated.snoozeMinutes,
+          'smartSnoozeEnabled':     updated.smartSnoozeEnabled,
+          'wakeMoodEnabled':        updated.wakeMoodEnabled,
+          'bedtimeHour':            updated.bedtimeHour,
+          'bedtimeMinute':          updated.bedtimeMinute,
+          'bedtimeReminderEnabled': updated.bedtimeReminderEnabled,
+          'reminderOffsetHours':    updated.reminderOffsetHours,
+          'reminderOffsetMinutes':  updated.reminderOffsetMinutes,
+          'sleepFactorsEnabled':    updated.sleepFactorsEnabled,
+          'customRingtonePath':     b.get('customRingtonePath'),
+          'snoozeAlarmTime':        null,
+          'currentSnoozeMinutes':   null,
+        });
+      }
+    } catch (e) {
+      debugPrint('Error notifying background service of settings change: $e');
+    }
   }
 
 
