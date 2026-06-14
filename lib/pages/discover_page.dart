@@ -373,7 +373,7 @@ class _DiscoverPageState extends State<DiscoverPage> {
         ),
       ),
       SizedBox(
-        height: 110,
+        height: 120,
         child: ListView.separated(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           scrollDirection: Axis.horizontal,
@@ -423,7 +423,7 @@ class _SoundscapeTile extends StatelessWidget {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         width: 110,
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: playing
             ? BoxDecoration(
                 gradient: LinearGradient(
