@@ -319,13 +319,14 @@ class _StatisticsPageState extends State<StatisticsPage> {
 
     final allEvents = widget.audioProvider.allRecords;
     final dayEvents = allEvents.where((e) {
+      final isSameCalendarDay = DateUtils.dateOnly(e.startTime) == DateUtils.dateOnly(_selectedDate);
+      if (isSameCalendarDay) return true;
       if (rec != null) {
         final start = rec.startTime;
         final end = rec.endTime ?? start.add(const Duration(hours: 12));
         return !e.startTime.isBefore(start) && !e.startTime.isAfter(end);
-      } else {
-        return DateUtils.dateOnly(e.startTime) == _selectedDate;
       }
+      return false;
     }).toList();
 
     return CustomScrollView(
