@@ -1244,51 +1244,67 @@ class _StatisticsPageState extends State<StatisticsPage> {
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-        child: Row(
-          children: [
-            GestureDetector(
-              onTap: () => widget.audioProvider.playEvent(event),
-              child: Icon(
-                isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                color: _C.cream,
-                size: 22,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Text(
-              DateFormat('HH:mm').format(event.startTime),
-              style: GoogleFonts.montserrat(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: _C.cream,
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: SizedBox(
-                height: 24,
-                child: CustomPaint(
-                  painter: _WaveformPainter(
-                    values: _generateDeterministicWaveform(event.id),
-                    color: typeColor,
-                    progress: progress,
+      child: Stack(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: Row(
+              children: [
+                GestureDetector(
+                  onTap: () => widget.audioProvider.playEvent(event),
+                  child: Icon(
+                    isPlaying ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                    color: _C.cream,
+                    size: 22,
                   ),
                 ),
+                const SizedBox(width: 10),
+                Text(
+                  event.formattedDuration,
+                  style: GoogleFonts.montserrat(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: _C.cream,
+                  ),
+                ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: SizedBox(
+                    height: 24,
+                    child: CustomPaint(
+                      painter: _WaveformPainter(
+                        values: _generateDeterministicWaveform(event.id),
+                        color: typeColor,
+                        progress: progress,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                GestureDetector(
+                  onTap: () => _showFragmentMenu(event),
+                  child: const Icon(
+                    Icons.more_vert_rounded,
+                    color: _C.muted,
+                    size: 20,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            right: 36,
+            top: 2,
+            child: Text(
+              DateFormat('HH:mm').format(event.startTime),
+              style: GoogleFonts.montserrat(
+                fontSize: 9,
+                fontWeight: FontWeight.w500,
+                color: _C.muted.withValues(alpha: 0.5),
               ),
             ),
-            const SizedBox(width: 12),
-            GestureDetector(
-              onTap: () => _showFragmentMenu(event),
-              child: const Icon(
-                Icons.more_vert_rounded,
-                color: _C.muted,
-                size: 20,
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
